@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Print → Tierlist</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1115; --panel:#1a1d26; --edge:#2a2f3d; --txt:#e8ebf2; --muted:#8a92a6; --accent:#5b8dff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  nav { display:flex; gap:4px; padding:10px 18px; border-bottom:1px solid var(--edge); align-items:center; }
+  nav .logo { font-weight:700; margin-right:16px; }
+  nav a { color:var(--muted); text-decoration:none; padding:6px 12px; border-radius:6px; }
+  nav a.active, nav a:hover { color:var(--txt); background:var(--panel); }
+  nav .spacer { flex:1; }
+  main { padding:20px; max-width:1200px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 16px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
+  button, .btn { background:var(--panel); color:var(--txt); border:1px solid var(--edge); border-radius:6px; padding:8px 14px; cursor:pointer; font:inherit; text-decoration:none; display:inline-block; }
+  button:hover, .btn:hover { border-color:#4a5168; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { color:#ff8080; }
+  input[type=text], input[type=number] { background:var(--panel); color:var(--txt); border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font:inherit; }
+  .panel { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:12px; cursor:pointer; transition:border-color .1s; }
+  .card:hover { border-color:#4a5168; }
+  .card .thumb { width:100%; aspect-ratio:4/3; background:#0a0c12; border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; margin-bottom:8px; position:relative; }
+  .card .thumb img { width:100%; height:100%; object-fit:cover; }
+  .card .cover { position:absolute; bottom:6px; right:6px; display:none; padding:4px 8px; font-size:11px; background:rgba(0,0,0,.55); color:#fff; border:0; border-radius:4px; cursor:pointer; }
+  .card:hover .cover { display:inline-block; }
+  .card .ttl { font-weight:600; font-size:13px; }
+  .card .meta { color:var(--muted); font-size:11px; margin-top:4px; }
+  .empty { color:var(--muted); text-align:center; padding:40px; border:1px dashed var(--edge); border-radius:10px; }
+  #drop { border:2px dashed var(--edge); border-radius:10px; padding:60px 20px; text-align:center; color:var(--muted); cursor:pointer; }
+  #drop.hover { border-color:var(--accent); color:var(--txt); }
+  #preview { margin-top:16px; position:relative; }
+  #preview img { max-width:100%; display:block; border-radius:6px; }
+  #overlay { position:absolute; inset:0; pointer-events:none; }
+
+  /* editor */
+  .editor { display:grid; grid-template-columns: 300px 1fr; gap:16px; }
+  @media (max-width: 900px) { .editor { grid-template-columns:1fr; } }
+  #pool { display:flex; flex-wrap:wrap; gap:6px; min-height:92px; padding:8px; border:1px dashed var(--edge); border-radius:8px; }
+  .cell { width:60px; height:80px; border-radius:14px; background-size:cover; background-position:center; cursor:grab; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .cell.drag { opacity:.4; }
+  .tier { display:grid; grid-template-columns: 56px 1fr; border:1px solid var(--edge); border-radius:8px; margin-bottom:8px; }
+  .tier .lblWrap { position:relative; border-radius:7px 0 0 7px; }
+  .tier .drop { border-radius:0 7px 7px 0; }
+  .tier .lbl { height:100%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; color:#111; outline:none; padding:0 4px; text-align:center; word-break:break-word; }
+  .tier .tools { position:absolute; top:3px; right:3px; display:none; gap:3px; z-index:2; }
+  .tier .lblWrap:hover .tools, .tier .lblWrap.open .tools { display:flex; }
+  .tier .tools button { width:18px; height:18px; padding:0; border:0; border-radius:4px; background:rgba(0,0,0,.45); color:#fff; font-size:11px; line-height:18px; text-align:center; cursor:pointer; }
+  .tier .tools .colorBtn { display:inline-block; }
+  .palette { position:absolute; top:24px; right:3px; display:none; grid-template-columns:repeat(8,16px); gap:3px; padding:6px; background:#1a1d26; border:1px solid var(--edge); border-radius:6px; z-index:3; }
+  .tier .lblWrap.open .palette { display:grid; }
+  .palette span { width:16px; height:16px; border-radius:3px; cursor:pointer; border:1px solid rgba(255,255,255,.1); }
+  .palette span:hover { outline:2px solid #fff; }
+  #tiers.wide .tier { grid-template-columns: 90px 1fr; }
+  #tiers.wide .tier .lbl { font-size: var(--tier-font, 18px); letter-spacing:.02em; line-height:1.05; }
+  .tier .drop { min-height:92px; padding:8px; display:flex; flex-wrap:wrap; gap:6px; background:#141822; }
+  .tier .drop.over { background:#1c2232; }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  label { color:var(--muted); font-size:12px; display:inline-flex; align-items:center; gap:6px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">🧃 P2T</span>
+  <a href="#/sets" data-route="/sets">Sets</a>
+  <a href="#/upload" data-route="/upload">Novo</a>
+  <a href="#/exports" data-route="/exports">Exports</a>
+</nav>
+
+<main id="view"></main>
+
+<script>
+// ---------- storage ----------
+const DB = {
+  sets: () => JSON.parse(localStorage.getItem('sets') || '[]'),
+  saveSets: v => localStorage.setItem('sets', JSON.stringify(v)),
+  exports: () => JSON.parse(localStorage.getItem('exports') || '[]'),
+  saveExports: v => localStorage.setItem('exports', JSON.stringify(v)),
+  getSet: id => DB.sets().find(s => s.id === id),
+  upsertSet: s => { const a = DB.sets(); const i = a.findIndex(x => x.id === s.id); if (i<0) a.unshift(s); else a[i] = s; DB.saveSets(a); },
+  delSet: id => DB.saveSets(DB.sets().filter(s => s.id !== id)),
+  delExport: id => DB.saveExports(DB.exports().filter(e => e.id !== id)),
+};
+const uid = () => Math.random().toString(36).slice(2,10);
+const fmtDate = ts => new Date(ts).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
+
+// ---------- router ----------
+const view = document.getElementById('view');
+const routes = {};
+function route(path, fn) { routes[path] = fn; }
+function matchRoute(hash) {
+  const h = hash.replace(/^#/, '') || '/sets';
+  for (const p in routes) {
+    const parts = p.split('/'), got = h.split('/');
+    if (parts.length !== got.length) continue;
+    const params = {};
+    let ok = true;
+    for (let i=0; i<parts.length; i++) {
+      if (parts[i].startsWith(':')) params[parts[i].slice(1)] = decodeURIComponent(got[i]);
+      else if (parts[i] !== got[i]) { ok = false; break; }
+    }
+    if (ok) return { fn: routes[p], params };
+  }
+  return null;
+}
+function render() {
+  const m = matchRoute(location.hash) || { fn: routes['/sets'], params:{} };
+  view.innerHTML = '';
+  m.fn(m.params);
+  for (const a of document.querySelectorAll('nav a')) {
+    a.classList.toggle('active', location.hash.startsWith('#'+a.dataset.route));
+  }
+}
+window.addEventListener('hashchange', render);
+
+// ---------- views ----------
+route('/sets', () => {
+  const sets = DB.sets();
+  const h = document.createElement('div');
+  h.innerHTML = `<div class="row"><h1 style="flex:1">Sets</h1><a class="btn primary" href="#/upload">+ Novo set</a></div>`;
+  view.appendChild(h);
+  if (!sets.length) {
+    view.insertAdjacentHTML('beforeend', `<div class="empty">Nenhum set ainda. Clique em "Novo set" pra enviar um print.</div>`);
+    return;
+  }
+  const g = document.createElement('div'); g.className = 'grid';
+  for (const s of sets) {
+    const idx = s.coverIndex ?? 0;
+    const c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = `
+      <div class="thumb">
+        ${s.cards[idx] ? `<img src="${s.cards[idx]}">` : ''}
+        <button class="cover" data-cover="${s.id}" title="Trocar capa">↻ capa</button>
+      </div>
+      <div class="ttl">${s.name}</div>
+      <div class="meta">${s.cards.length} skins · ${fmtDate(s.createdAt)}</div>
+      <div class="row" style="margin-top:8px"><a class="btn" href="#/set/${s.id}">Abrir</a><button class="danger" data-del="${s.id}">Excluir</button></div>`;
+    g.appendChild(c);
+  }
+  view.appendChild(g);
+  g.addEventListener('click', e => {
+    const delId = e.target.dataset.del;
+    if (delId && confirm('Excluir esse set?')) { DB.delSet(delId); render(); return; }
+    const coverId = e.target.dataset.cover;
+    if (coverId) {
+      e.stopPropagation();
+      const s = DB.getSet(coverId);
+      if (!s || !s.cards.length) return;
+      s.coverIndex = ((s.coverIndex ?? 0) + 1) % s.cards.length;
+      DB.upsertSet(s);
+      const img = e.target.parentElement.querySelector('img');
+      if (img) img.src = s.cards[s.coverIndex];
+    }
+  });
+});
+
+route('/upload', () => {
+  view.innerHTML = `
+    <h1>Novo set</h1>
+    <div class="panel">
+      <div id="drop">Clique ou arraste o print aqui</div>
+      <input id="file" type="file" accept="image/*" hidden>
+      <div id="preview"><canvas id="overlay"></canvas></div>
+    </div>
+    <div class="panel" id="controls" style="display:none">
+      <div class="row">
+        <label>Nome <input type="text" id="setName" placeholder="Meu inventário"></label>
+        <label>cols <input type="number" id="cols" min="1" max="20" style="width:70px"></label>
+        <label>rows <input type="number" id="rows" min="1" max="20" style="width:70px"></label>
+        <label>recorte % <input type="number" id="pad" min="0" max="40" value="8" style="width:70px"></label>
+        <button id="refatiar">Refatiar</button>
+        <button id="autobtn">Auto</button>
+        <span style="flex:1"></span>
+        <button class="primary" id="save">Salvar set →</button>
+      </div>
+      <div id="pool" style="margin-top:10px"></div>
+    </div>`;
+  initUpload();
+});
+
+route('/set/:id', ({ id }) => {
+  const set = DB.getSet(id);
+  if (!set) { view.innerHTML = `<p>Set não encontrado. <a href="#/sets">voltar</a></p>`; return; }
+  view.innerHTML = `
+    <div class="row"><h1 id="setTitle" style="flex:1" contenteditable spellcheck="false">${set.name}</h1>
+      <a class="btn" href="#/sets">← Sets</a>
+      <button id="sheetBtn">Baixar preview do set</button>
+      <button class="primary" id="exportBtn">Exportar PNG</button>
+    </div>
+    <div class="editor">
+      <div class="panel"><h2>Pool</h2><div id="pool"></div></div>
+      <div class="panel">
+        <h2>Tiers</h2>
+        <div id="tiers"></div>
+        <button id="addTier" style="margin-top:8px">+ Tier</button>
+      </div>
+    </div>`;
+  const title = document.getElementById('setTitle');
+  const saveName = () => {
+    const n = title.textContent.trim();
+    if (n && n !== set.name) { set.name = n; DB.upsertSet(set); }
+    else title.textContent = set.name;
+  };
+  title.addEventListener('blur', saveName);
+  title.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); title.blur(); } });
+  initEditor(set);
+});
+
+route('/exports', () => {
+  const exps = DB.exports();
+  view.innerHTML = `<h1>Exports</h1>`;
+  if (!exps.length) { view.insertAdjacentHTML('beforeend', `<div class="empty">Nada exportado ainda.</div>`); return; }
+  const g = document.createElement('div'); g.className = 'grid';
+  for (const e of exps) {
+    const c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = `
+      <div class="thumb"><img src="${e.png}"></div>
+      <div class="ttl" contenteditable spellcheck="false" data-id="${e.id}">${e.name}</div>
+      <div class="meta">${fmtDate(e.createdAt)}</div>
+      <div class="row" style="margin-top:8px"><a class="btn" data-dl="${e.id}">Baixar</a><button class="danger" data-del="${e.id}">Excluir</button></div>`;
+    c.querySelector('[data-dl]').href = e.png;
+    c.querySelector('[data-dl]').download = e.name + '.png';
+    g.appendChild(c);
+  }
+  view.appendChild(g);
+  g.addEventListener('click', e => {
+    const id = e.target.dataset.del;
+    if (id && confirm('Excluir?')) { DB.delExport(id); render(); }
+  });
+  g.addEventListener('blur', e => {
+    const id = e.target.dataset?.id; if (!id) return;
+    const n = e.target.textContent.trim(); if (!n) return;
+    const all = DB.exports();
+    const x = all.find(x => x.id === id); if (!x || x.name === n) return;
+    x.name = n; DB.saveExports(all);
+    // refresh the matching download link with the new filename
+    const dl = e.target.parentElement.querySelector('[data-dl]');
+    if (dl) dl.download = n + '.png';
+  }, true);
+  g.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.dataset?.id) { e.preventDefault(); e.target.blur(); }
+  });
+});
+
+// ---------- upload logic ----------
+function initUpload() {
+  const drop = document.getElementById('drop');
+  const fileInput = document.getElementById('file');
+  const preview = document.getElementById('preview');
+  const overlay = document.getElementById('overlay');
+  const controls = document.getElementById('controls');
+  const pool = document.getElementById('pool');
+  let img = null;
+  let cards = []; // dataURLs
+
+  drop.onclick = () => fileInput.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover'); };
+  drop.ondragleave = () => drop.classList.remove('hover');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hover'); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); };
+  fileInput.onchange = e => e.target.files[0] && load(e.target.files[0]);
+
+  function load(f) {
+    const i = new Image();
+    i.onload = () => {
+      img = i;
+      const old = preview.querySelector('img'); if (old) old.remove();
+      preview.insertBefore(i, overlay);
+      controls.style.display = '';
+      document.getElementById('setName').value = f.name.replace(/\.[^.]+$/, '');
+      autoSlice();
+    };
+    i.src = URL.createObjectURL(f);
+  }
+
+  function renderPool() {
+    pool.innerHTML = '';
+    for (const src of cards) {
+      const d = document.createElement('div');
+      d.className = 'cell';
+      d.style.backgroundImage = `url(${src})`;
+      pool.appendChild(d);
+    }
+  }
+
+  function sliceByGrid(cols, rows, padPct) {
+    cards = [];
+    const cw = img.naturalWidth / cols, ch = img.naturalHeight / rows;
+    const px = cw * padPct, py = ch * padPct;
+    for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
+      const cv = document.createElement('canvas');
+      const sw = cw - px*2, sh = ch - py*2;
+      cv.width = sw; cv.height = sh;
+      cv.getContext('2d').drawImage(img, c*cw+px, r*ch+py, sw, sh, 0, 0, sw, sh);
+      cards.push(cv.toDataURL('image/png'));
+    }
+    renderPool();
+  }
+
+  function autoSlice() {
+    const { bbox, cols, rows, gridLinesX, gridLinesY } = detectGrid(img);
+    document.getElementById('cols').value = cols;
+    document.getElementById('rows').value = rows;
+    cards = [];
+    for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
+      const x0 = gridLinesX[c], x1 = gridLinesX[c+1];
+      const y0 = gridLinesY[r], y1 = gridLinesY[r+1];
+      const pad = Math.min(x1-x0, y1-y0) * 0.08;
+      const sx = x0 + pad, sy = y0 + pad;
+      const sw = (x1-x0) - pad*2, sh = (y1-y0) - pad*2;
+      const cv = document.createElement('canvas');
+      cv.width = sw; cv.height = sh;
+      cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      if (!isUiIcon(cv)) cards.push(cv.toDataURL('image/png'));
+    }
+    renderPool();
+    drawOverlay(bbox, gridLinesX, gridLinesY);
+  }
+
+  // UI icons (camiseta+, shuffle) are flat shapes with very few distinct
+  // colours. Real skins are photographic and have hundreds. Quantise RGB to
+  // 32-step buckets and count the unique ones.
+  function isUiIcon(canvas) {
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const seen = new Set();
+    for (let i = 0; i < data.length; i += 16) {
+      const key = ((data[i] >> 5) << 10) | ((data[i+1] >> 5) << 5) | (data[i+2] >> 5);
+      seen.add(key);
+      if (seen.size > 60) return false;
+    }
+    return true;
+  }
+
+  function drawOverlay(bbox, linesX, linesY) {
+    const el = preview.querySelector('img');
+    const w = el.clientWidth, h = el.clientHeight;
+    overlay.width = w; overlay.height = h;
+    overlay.style.width = w+'px'; overlay.style.height = h+'px';
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0,0,w,h);
+    const sx = w / img.naturalWidth, sy = h / img.naturalHeight;
+    ctx.strokeStyle = 'rgba(91,141,255,.9)'; ctx.lineWidth = 2;
+    ctx.strokeRect(bbox.x*sx, bbox.y*sy, bbox.w*sx, bbox.h*sy);
+    ctx.strokeStyle = 'rgba(80,220,120,.8)'; ctx.lineWidth = 1;
+    for (const x of linesX) { ctx.beginPath(); ctx.moveTo(x*sx, bbox.y*sy); ctx.lineTo(x*sx, (bbox.y+bbox.h)*sy); ctx.stroke(); }
+    for (const y of linesY) { ctx.beginPath(); ctx.moveTo(bbox.x*sx, y*sy); ctx.lineTo((bbox.x+bbox.w)*sx, y*sy); ctx.stroke(); }
+  }
+
+  document.getElementById('refatiar').onclick = () => {
+    const cols = +document.getElementById('cols').value;
+    const rows = +document.getElementById('rows').value;
+    const pad = +document.getElementById('pad').value / 100;
+    if (img && cols && rows) sliceByGrid(cols, rows, pad);
+  };
+  document.getElementById('autobtn').onclick = autoSlice;
+
+  document.getElementById('save').onclick = () => {
+    if (!cards.length) return;
+    const name = document.getElementById('setName').value.trim() || 'Set sem nome';
+    const s = { id: uid(), name, createdAt: Date.now(), cards };
+    DB.upsertSet(s);
+    location.hash = '#/set/' + s.id;
+  };
+}
+
+// ---------- grid detector (gap-colour mask + plateau runs) ----------
+// Idea: the page background between tiles is a single uniform colour. Mask
+// pixels that match that colour, invert, project per axis. The signal is
+// almost binary: 1 over tile rows/cols, 0 over gaps. Each contiguous
+// above-threshold run is a tile; the gap between consecutive runs is a grid
+// line. Period comes out of the medians.
+function detectGrid(img) {
+  const maxW = 900;
+  const scale = Math.min(1, maxW / img.naturalWidth);
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  // --- find gap colour: mode of a 3-pixel border ring, bucketised to 8 ---
+  const buckets = new Map();
+  const add = (r, g, b) => {
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    buckets.set(key, (buckets.get(key) || 0) + 1);
+  };
+  const addRow = (y) => { for (let x = 0; x < w; x++) { const i = (y*w+x)*4; add(data[i], data[i+1], data[i+2]); } };
+  const addCol = (x) => { for (let y = 0; y < h; y++) { const i = (y*w+x)*4; add(data[i], data[i+1], data[i+2]); } };
+  for (let i = 0; i < 3; i++) { addRow(i); addRow(h-1-i); addCol(i); addCol(w-1-i); }
+  let bestKey = 0, bestCnt = 0;
+  for (const [k, c] of buckets) { if (c > bestCnt) { bestCnt = c; bestKey = k; } }
+  const gR = ((bestKey >> 10) & 31) << 3;
+  const gG = ((bestKey >> 5)  & 31) << 3;
+  const gB = ( bestKey        & 31) << 3;
+
+  // --- build tile-mask (1 where pixel is NOT gap colour), project ---
+  const px = new Float32Array(w), py = new Float32Array(h);
+  const TH2 = 70 * 70;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y*w + x) * 4;
+      const dr = data[i] - gR, dg = data[i+1] - gG, db = data[i+2] - gB;
+      const isTile = (dr*dr + dg*dg + db*db) >= TH2 ? 1 : 0;
+      px[x] += isTile; py[y] += isTile;
+    }
+  }
+  for (let x = 0; x < w; x++) px[x] /= h;
+  for (let y = 0; y < h; y++) py[y] /= w;
+
+  const inv = 1 / scale;
+  const linesX = findGridLines(px, w).map(v => v * inv);
+  const linesY = findGridLines(py, h).map(v => v * inv);
+  const bbox = {
+    x: linesX[0], y: linesY[0],
+    w: linesX[linesX.length-1] - linesX[0],
+    h: linesY[linesY.length-1] - linesY[0],
+  };
+  return { bbox, cols: linesX.length - 1, rows: linesY.length - 1, gridLinesX: linesX, gridLinesY: linesY };
+}
+
+// Threshold the smoothed projection at 50% of its range, collect contiguous
+// above-threshold runs. Each run is a tile. Grid lines are the midpoints
+// between consecutive runs, plus outer edges extrapolated from the median
+// period.
+function findGridLines(proj, n) {
+  const k = Math.max(2, Math.round(n * 0.004));
+  const s = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0, c = 0;
+    for (let j = Math.max(0, i-k); j <= Math.min(n-1, i+k); j++) { sum += proj[j]; c++; }
+    s[i] = sum / c;
+  }
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < n; i++) { if (s[i] < mn) mn = s[i]; if (s[i] > mx) mx = s[i]; }
+  const thr = mn + (mx - mn) * 0.5;
+
+  const runs = [];
+  let start = -1;
+  for (let i = 0; i < n; i++) {
+    if (s[i] >= thr) { if (start < 0) start = i; }
+    else if (start >= 0) { runs.push([start, i-1]); start = -1; }
+  }
+  if (start >= 0) runs.push([start, n-1]);
+  if (!runs.length) return [0, n-1];
+
+  // drop very short runs (noise), compared to the median width
+  const widths = runs.map(r => r[1] - r[0] + 1).sort((a,b) => a-b);
+  const typical = widths[widths.length >> 1];
+  const kept = runs.filter(r => (r[1] - r[0] + 1) >= typical * 0.4);
+  if (!kept.length) return [0, n-1];
+
+  const centers = kept.map(r => (r[0] + r[1]) / 2);
+  const spans = [];
+  for (let i = 1; i < centers.length; i++) spans.push(centers[i] - centers[i-1]);
+  spans.sort((a,b) => a-b);
+  const period = spans.length ? spans[spans.length >> 1] : typical;
+
+  const lines = [Math.max(0, centers[0] - period/2)];
+  for (let i = 1; i < centers.length; i++) lines.push((centers[i-1] + centers[i]) / 2);
+  lines.push(Math.min(n-1, centers[centers.length-1] + period/2));
+  return lines;
+}
+
+// ---------- editor ----------
+const TIERS = [
+  { l:'S', c:'#ff5a5f' }, { l:'A', c:'#ff9f45' }, { l:'B', c:'#ffd84d' },
+  { l:'C', c:'#9ad84d' }, { l:'D', c:'#4dc3ff' }, { l:'F', c:'#b388ff' },
+];
+const PALETTE = [
+  '#ff5a5f','#ff7a3d','#ff9f45','#ffd84d','#d7ff4d','#9ad84d','#5bd27e','#4dd0c7',
+  '#4dc3ff','#5b8dff','#8a7bff','#b388ff','#ff6ec7','#ff4d8a','#c8c8c8','#5a5a5a',
+];
+document.addEventListener('click', () => {
+  for (const w of document.querySelectorAll('.lblWrap.open')) w.classList.remove('open');
+});
+
+function initEditor(set) {
+  const pool = document.getElementById('pool');
+  const tiersEl = document.getElementById('tiers');
+
+  // Per-set tier list. Default to TIERS; older sets stored layout keyed by
+  // tier letter, so adopt the letter as the id for back-compat.
+  if (!set.tiers) set.tiers = TIERS.map(t => ({ id: t.l, l: t.l, c: t.c }));
+  const layout = set.layout || null;
+  const srcMap = new Map();
+  set.cards.forEach((src, i) => srcMap.set('c'+i, src));
+
+  for (const t of set.tiers) addTierRow(t);
+  wireDrop(pool);
+
+  // Extended label mode is the default.
+  const updateWideMode = () => { tiersEl.classList.add('wide'); fitTierFont(); };
+  window.addEventListener('resize', fitTierFont);
+  tiersEl.addEventListener('input', () => {
+    updateWideMode();
+    // sync label edits into set.tiers
+    for (const row of tiersEl.querySelectorAll('.tier')) {
+      const t = set.tiers.find(t => t.id === row.dataset.tier);
+      if (t) t.l = row.querySelector('.lbl').textContent;
+    }
+    DB.upsertSet(set);
+  });
+  updateWideMode();
+
+  const placed = new Set();
+  if (layout) {
+    for (const t of set.tiers) {
+      const dz = tiersEl.querySelector(`[data-tier="${t.id}"] .drop`);
+      for (const id of (layout[t.id] || [])) {
+        const src = srcMap.get(id); if (!src) continue;
+        dz.appendChild(makeCell(id, src));
+        placed.add(id);
+      }
+    }
+  }
+  for (const [id, src] of srcMap) {
+    if (!placed.has(id)) pool.appendChild(makeCell(id, src));
+  }
+
+  document.getElementById('addTier').onclick = () => {
+    const palette = ['#5b8dff','#ff6ec7','#9dcf4d','#c79cff','#ffb24d','#4dd0c7','#ff8a8a','#a0a0a0'];
+    const t = { id: uid(), l: 'Novo', c: palette[set.tiers.length % palette.length] };
+    set.tiers.push(t);
+    addTierRow(t);
+    DB.upsertSet(set);
+    updateWideMode();
+  };
+
+  function addTierRow(t) {
+    const row = document.createElement('div');
+    row.className = 'tier';
+    row.dataset.tier = t.id;
+    row.innerHTML = `
+      <div class="lblWrap" style="background:${t.c}">
+        <div class="lbl" contenteditable spellcheck="false">${t.l}</div>
+        <div class="tools">
+          <button title="Cor" data-color>●</button>
+          <button title="Mover para cima" data-up>↑</button>
+          <button title="Mover para baixo" data-down>↓</button>
+          <button title="Excluir tier" data-del>×</button>
+        </div>
+        <div class="palette">${PALETTE.map(c => `<span data-c="${c}" style="background:${c}"></span>`).join('')}</div>
+      </div>
+      <div class="drop"></div>`;
+    tiersEl.appendChild(row);
+    wireDrop(row.querySelector('.drop'));
+    const wrap = row.querySelector('.lblWrap');
+    row.querySelector('[data-color]').onclick = e => {
+      e.stopPropagation();
+      // close any other open palette
+      for (const w of tiersEl.querySelectorAll('.lblWrap.open')) if (w !== wrap) w.classList.remove('open');
+      wrap.classList.toggle('open');
+    };
+    row.querySelector('.palette').onclick = e => {
+      const c = e.target.dataset.c; if (!c) return;
+      t.c = c;
+      wrap.style.background = c;
+      wrap.classList.remove('open');
+      DB.upsertSet(set);
+    };
+    row.querySelector('[data-up]').onclick = () => moveTier(t.id, -1);
+    row.querySelector('[data-down]').onclick = () => moveTier(t.id, +1);
+    row.querySelector('[data-del]').onclick = () => {
+      if (!confirm(`Excluir tier "${t.l}"? As skins voltam pro pool.`)) return;
+      for (const c of row.querySelectorAll('.cell')) pool.appendChild(c);
+      row.remove();
+      set.tiers = set.tiers.filter(x => x.id !== t.id);
+      saveLayout();
+      DB.upsertSet(set);
+      updateWideMode();
+    };
+  }
+
+  function wireDrop(el) {
+    el.ondragover = e => { e.preventDefault(); el.classList.add('over'); };
+    el.ondragleave = () => el.classList.remove('over');
+    el.ondrop = e => {
+      e.preventDefault(); el.classList.remove('over');
+      const id = e.dataTransfer.getData('text/plain');
+      const c = document.getElementById('cell-'+id);
+      if (!c) return;
+      const after = insertionTarget(el, c, e.clientX, e.clientY);
+      if (after == null) el.appendChild(c);
+      else el.insertBefore(c, after);
+      saveLayout();
+    };
+  }
+
+  // Which existing cell should the dragged card land before? Returns the
+  // closest cell on the SAME row (by y) whose horizontal center is to the
+  // right of the cursor; null means "append at end".
+  function insertionTarget(container, dragged, x, y) {
+    const cells = [...container.querySelectorAll('.cell')].filter(c => c !== dragged);
+    if (!cells.length) return null;
+    // Pick the row (set of cells sharing a y band) nearest to the cursor.
+    const rowH = cells[0].offsetHeight;
+    const sameRow = cells.filter(c => {
+      const r = c.getBoundingClientRect();
+      return y >= r.top - rowH / 2 && y <= r.bottom + rowH / 2;
+    });
+    const candidates = sameRow.length ? sameRow : cells;
+    for (const c of candidates) {
+      const r = c.getBoundingClientRect();
+      if (x < r.left + r.width / 2) return c;
+    }
+    return null;
+  }
+  function makeCell(id, src) {
+    const d = document.createElement('div');
+    d.className = 'cell';
+    d.id = 'cell-'+id;
+    d.draggable = true;
+    d.style.backgroundImage = `url(${src})`;
+    d.ondragstart = e => { e.dataTransfer.setData('text/plain', id); d.classList.add('drag'); };
+    d.ondragend = () => d.classList.remove('drag');
+    return d;
+  }
+  function moveTier(id, dir) {
+    const i = set.tiers.findIndex(x => x.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= set.tiers.length) return;
+    [set.tiers[i], set.tiers[j]] = [set.tiers[j], set.tiers[i]];
+    const rows = [...tiersEl.querySelectorAll('.tier')];
+    if (dir < 0) tiersEl.insertBefore(rows[i], rows[j]);
+    else tiersEl.insertBefore(rows[j], rows[i]);
+    DB.upsertSet(set);
+  }
+
+  function saveLayout() {
+    const l = {};
+    for (const row of tiersEl.querySelectorAll('.tier')) {
+      l[row.dataset.tier] = [...row.querySelectorAll('.cell')].map(c => c.id.replace('cell-',''));
+    }
+    set.layout = l;
+    DB.upsertSet(set);
+  }
+
+  document.getElementById('exportBtn').onclick = async () => {
+    const rows = [...tiersEl.querySelectorAll('.tier')];
+    const cellW = 72, cellH = 96, pad = 10, radius = 14;
+    const wide = true;
+    const labelW = 128;
+    // Pick one font size that fits every label into labelW.
+    const availText = labelW - pad * 2;
+    const MIN = 12, MAX = 32;
+    let labelFont = MAX;
+    for (const r of rows) {
+      const txt = r.querySelector('.lbl').textContent.trim() || ' ';
+      const w = measureAtPx(txt, MAX);
+      if (w > availText) labelFont = Math.min(labelFont, Math.max(MIN, MAX * availText / w));
+    }
+    const maxCells = Math.max(1, ...rows.map(r => r.querySelectorAll('.cell').length));
+    const width = labelW + pad + maxCells*(cellW+pad) + pad;
+    const height = pad + rows.length*(cellH+pad);
+    const cv = document.createElement('canvas');
+    cv.width = width; cv.height = height;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#141822'; ctx.fillRect(0,0,width,height);
+    for (let i=0; i<rows.length; i++) {
+      const y = pad + i*(cellH+pad);
+      const lbl = rows[i].querySelector('.lbl');
+      const wrap = rows[i].querySelector('.lblWrap');
+      ctx.fillStyle = (wrap && wrap.style.background) || lbl.style.background || lbl.style.backgroundColor;
+      roundRect(ctx, pad, y, labelW-pad, cellH, 8); ctx.fill();
+      const txt = lbl.textContent;
+      ctx.fillStyle = '#111';
+      ctx.font = `bold ${labelFont.toFixed(1)}px system-ui`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      wrapText(ctx, txt, pad + (labelW-pad)/2, y + cellH/2, labelW - pad*2, labelFont * 1.1);
+      const cells = [...rows[i].querySelectorAll('.cell')];
+      for (let j=0; j<cells.length; j++) {
+        const src = cells[j].style.backgroundImage.slice(5,-2);
+        const im = new Image();
+        await new Promise(r => { im.onload = r; im.src = src; });
+        const cx = labelW + pad + j*(cellW+pad);
+        ctx.save();
+        roundRect(ctx, cx, y, cellW, cellH, radius); ctx.clip();
+        ctx.drawImage(im, cx, y, cellW, cellH);
+        ctx.restore();
+      }
+    }
+    const png = cv.toDataURL('image/png');
+    const exp = { id: uid(), setId: set.id, name: set.name + ' tierlist', createdAt: Date.now(), png };
+    const all = DB.exports(); all.unshift(exp); DB.saveExports(all);
+    location.hash = '#/exports';
+  };
+
+  document.getElementById('sheetBtn').onclick = async () => {
+    // Contact sheet of every card in the set, laid out as a grid.
+    const n = set.cards.length;
+    const cols = Math.min(8, Math.ceil(Math.sqrt(n)));
+    const rows = Math.ceil(n / cols);
+    const tileW = 96, tileH = 128, pad = 10, radius = 16;
+    const w = pad + cols*(tileW+pad);
+    const h = pad + rows*(tileH+pad);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#141822'; ctx.fillRect(0,0,w,h);
+    for (let i = 0; i < n; i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      const x = pad + col*(tileW+pad), y = pad + row*(tileH+pad);
+      const im = new Image();
+      await new Promise(r => { im.onload = r; im.src = set.cards[i]; });
+      ctx.save();
+      roundRect(ctx, x, y, tileW, tileH, radius); ctx.clip();
+      ctx.drawImage(im, x, y, tileW, tileH);
+      ctx.restore();
+    }
+    const a = document.createElement('a');
+    a.download = `${set.name.replace(/\s+/g, '_')}_cards.png`;
+    a.href = cv.toDataURL('image/png');
+    a.click();
+  };
+}
+
+// Shared measurement canvas for text sizing.
+const _mctx = document.createElement('canvas').getContext('2d');
+function measureAtPx(text, px, weight = 800) {
+  _mctx.font = `${weight} ${px}px system-ui, -apple-system, Segoe UI, Roboto`;
+  return _mctx.measureText(text).width;
+}
+
+// Scan the current tier labels, find the biggest font size (within [MIN,MAX])
+// at which the widest label still fits in the available width, and apply it
+// to all of them via a CSS var.
+function fitTierFont() {
+  const tiers = document.getElementById('tiers');
+  if (!tiers) return;
+  const labels = [...tiers.querySelectorAll('.lbl')];
+  if (!labels.length) return;
+  const avail = (labels[0].clientWidth || 82) - 8;   // minus internal padding
+  const MIN = 10, MAX = 22;
+  let size = MAX;
+  for (const l of labels) {
+    const t = l.textContent.trim() || ' ';
+    const w = measureAtPx(t, MAX);
+    if (w > avail) size = Math.min(size, Math.max(MIN, MAX * avail / w));
+  }
+  tiers.style.setProperty('--tier-font', size.toFixed(1) + 'px');
+}
+
+function wrapText(ctx, text, cx, cy, maxW, lineH) {
+  const words = text.split(/\s+/);
+  const lines = []; let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+    else cur = test;
+  }
+  if (cur) lines.push(cur);
+  const start = cy - ((lines.length - 1) * lineH) / 2;
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], cx, start + i * lineH);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+render();
+</script>
+</body>
+</html>
