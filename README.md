@@ -7,7 +7,7 @@ Turn inventory screenshots into a tier list you can organize, revisit, and share
 ## Make your first tier list
 
 1. Open [index.html](index.html) in a browser and choose **Novo set**. You can try it with the [sample inventory screenshot](test/sample.jpeg).
-2. Select or drop one or more screenshots. If a screenshot includes menus or other content outside the inventory, use **Recortar print** to mark the area to scan. Use **Refatiar** to adjust the grid manually.
+2. Select or drop one or more screenshots. If a screenshot includes menus or other content outside the inventory, use **Recortar print** to mark the area to scan. Open **Ajustar grade manualmente** to override the detected grid.
 3. Remove any cards you want to leave out, then save the set. Drag cards into a tier or select several and move them together. Use **Adicionar prints** to bring in more cards later.
 4. Choose **Exportar PNG** when the ranking is ready. Open the export by clicking its card on the **Exports** page, then view it at original size or download it.
 
