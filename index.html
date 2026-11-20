@@ -37,6 +37,27 @@
   .empty { color:var(--muted); text-align:center; padding:40px; border:1px dashed var(--edge); border-radius:10px; }
   #drop { border:2px dashed var(--edge); border-radius:10px; padding:60px 20px; text-align:center; color:var(--muted); cursor:pointer; }
   #drop.hover { border-color:var(--accent); color:var(--txt); }
+  #drop { width:100%; }
+  #drop.hasPrints { padding:12px 16px; border-width:1px; }
+  .uploadBar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+  .uploadBar h2 { margin:0; }
+  .uploadActions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .uploadActions > label { max-width:100%; min-width:0; }
+  .uploadActions > label select { min-width:0; max-width:100%; }
+  .uploadActions button:disabled { opacity:.5; cursor:default; }
+  .uploadActions button[hidden] { display:none; }
+  #cropPrint[aria-pressed="true"] { border-color:var(--accent); }
+  .printToolbar { margin-top:14px; }
+  .printPicker { flex:1 1 220px; }
+  .printPicker select { flex:1; }
+  .gridSettings { margin-top:12px; }
+  .gridSettings summary { width:fit-content; cursor:pointer; color:var(--muted); }
+  .gridSettings .uploadActions { margin-top:8px; }
+  .gridSettings input { width:70px; }
+  .reviewToolbar { margin-bottom:12px; }
+  .uploadCount { color:var(--muted); font-size:12px; }
+  .uploadFinish .uploadActions { flex:1; }
+  .uploadFinish #save { margin-left:auto; }
   #preview { margin-top:16px; position:relative; width:fit-content; max-width:100%; }
   #preview img { max-width:100%; display:block; border-radius:6px; }
   #preview.cropping img { cursor:crosshair; touch-action:none; }
@@ -76,6 +97,12 @@
   .editor .cell { padding:0; }
   dialog { background:var(--panel); color:var(--txt); border:1px solid var(--edge); border-radius:10px; }
   dialog::backdrop { background:rgba(0,0,0,.65); }
+  #duplicateReview { width:min(520px, calc(100vw - 32px)); }
+  #duplicateReview button[hidden] { display:none; }
+  .duplicatePair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+  .duplicatePair figure { min-width:0; margin:0; text-align:center; }
+  .duplicatePair img { display:block; max-width:100%; width:140px; height:160px; object-fit:contain; margin:0 auto 8px; }
+  .duplicatePair figcaption { overflow-wrap:anywhere; color:var(--muted); }
   .exportPreview { overflow:auto; }
   .exportPreview img { display:block; max-width:100%; height:auto; margin:0 auto; }
   .exportPreview.actualSize img { max-width:none; }
@@ -272,41 +299,83 @@ route('/set/:id/upload', ({ id }) => {
 
 function renderUpload(targetSet) {
   view.innerHTML = `
-    <h1>${targetSet ? 'Adicionar prints ao set' : 'Novo set'}</h1>
-    ${targetSet ? `<a class="btn" href="#/set/${targetSet.id}" style="margin-bottom:10px">← Voltar ao set</a>` : ''}
-    <div class="panel">
-      <button id="drop" type="button" style="width:100%">Clique ou arraste os prints aqui</button>
+    <header class="setHeader">
+      ${targetSet ? `<a class="setBack" href="#/set/${targetSet.id}">← Voltar ao set</a>` : '<a class="setBack" href="#/sets">← Sets</a>'}
+      <div class="setHeaderRow"><h1>${targetSet ? 'Adicionar prints ao set' : 'Novo set'}</h1></div>
+    </header>
+    <section class="panel" aria-label="Prints do inventário">
+      <button id="drop" type="button">Selecionar ou arrastar prints</button>
       <input id="file" type="file" accept="image/*" multiple hidden>
       <p id="uploadStatus" role="status" hidden></p>
-      <div id="printControls" class="row" style="display:none; margin-top:10px">
-        <label>Print <select id="prints"></select></label>
-        <button id="cropPrint" type="button" aria-pressed="false">Recortar print</button>
-        <button id="resetCrop" type="button" hidden>Usar print inteiro</button>
-        <button id="removePrint" type="button">Remover print</button>
+      <div id="printControls" hidden>
+        <div class="uploadBar printToolbar">
+          <label class="printPicker">Print <select id="prints"></select></label>
+          <div class="uploadActions" role="group" aria-label="Ações do print">
+            <button id="cropPrint" type="button" aria-pressed="false">Recortar print</button>
+            <button id="resetCrop" type="button" hidden>Usar print inteiro</button>
+            <button id="autobtn" type="button">Detectar grade</button>
+            <button id="removePrint" type="button" class="danger">Remover print</button>
+          </div>
+        </div>
+        <details class="gridSettings" id="gridSettings">
+          <summary>Ajustar grade manualmente</summary>
+          <div class="uploadActions">
+            <label>Colunas <input type="number" id="cols" min="1" max="20"></label>
+            <label>Linhas <input type="number" id="rows" min="1" max="20"></label>
+            <label>Margem (%) <input type="number" id="pad" min="0" max="40" value="8"></label>
+            <button id="refatiar" type="button">Aplicar grade</button>
+          </div>
+        </details>
+        <p id="cropHint" hidden>Arraste sobre o print para selecionar a área do inventário.</p>
+        <div id="preview"><canvas id="overlay"></canvas></div>
       </div>
-      <p id="cropHint" hidden>Arraste sobre o print para selecionar a área do inventário.</p>
-      <div id="preview"><canvas id="overlay"></canvas></div>
+    </section>
+    <div id="controls" hidden>
+      <section class="panel" aria-labelledby="reviewHeading">
+        <div class="uploadBar reviewToolbar">
+          <div>
+            <h2 id="reviewHeading">Revisar cards</h2>
+            <span class="uploadCount" id="uploadCount" role="status"></span>
+          </div>
+          <div class="uploadActions">
+            <button id="reviewDuplicates" type="button" disabled>Revisar repetidos</button>
+            <button id="removeCards" type="button" class="danger" disabled>Remover selecionados</button>
+            <button id="undoRemoveCards" type="button" disabled>Desfazer remoção</button>
+          </div>
+        </div>
+        <div id="pool"></div>
+      </section>
+      <section class="panel" aria-label="${targetSet ? 'Adicionar cards ao set' : 'Salvar set'}">
+        <div class="uploadBar uploadFinish">
+          ${targetSet ? '' : `<div class="uploadActions">
+            <label>Nome <input type="text" id="setName" placeholder="Meu inventário"></label>
+            <label>Tags do set <input type="text" id="newSetTags" placeholder="Separe por vírgulas"></label>
+            <label id="templateLabel" hidden>Modelo de tiers <select id="tierTemplate"><option value="">Padrão</option></select></label>
+          </div>`}
+          <button class="primary" id="save" type="button" disabled>${targetSet ? 'Adicionar cards →' : 'Salvar set →'}</button>
+        </div>
+        <p id="uploadSaveStatus" role="status" hidden></p>
+      </section>
     </div>
-    <div class="panel" id="controls" style="display:none">
-      <div class="row">
-        ${targetSet ? '' : '<label>Nome <input type="text" id="setName" placeholder="Meu inventário"></label>'}
-        ${targetSet ? '' : '<label>Tags do set <input type="text" id="newSetTags" placeholder="Separe por vírgulas"></label>'}
-        ${targetSet ? '' : '<label id="templateLabel" hidden>Modelo de tiers <select id="tierTemplate"><option value="">Padrão</option></select></label>'}
-        <label>cols <input type="number" id="cols" min="1" max="20" style="width:70px"></label>
-        <label>rows <input type="number" id="rows" min="1" max="20" style="width:70px"></label>
-        <label>recorte % <input type="number" id="pad" min="0" max="40" value="8" style="width:70px"></label>
-        <button id="refatiar">Refatiar</button>
-        <button id="autobtn">Auto</button>
-        <span style="flex:1"></span>
-        <button class="primary" id="save">${targetSet ? 'Adicionar cards →' : 'Salvar set →'}</button>
+    <dialog id="duplicateReview" aria-labelledby="duplicateHeading">
+      <h2 id="duplicateHeading">Revisar cards repetidos</h2>
+      <p id="duplicateStatus" role="status"></p>
+      <div id="duplicatePair" hidden>
+        <div class="duplicatePair">
+          <figure><img id="duplicateLeft" alt="Card 1"><figcaption id="duplicateLeftSource"></figcaption></figure>
+          <figure><img id="duplicateRight" alt="Card 2"><figcaption id="duplicateRightSource"></figcaption></figure>
+        </div>
+        <div class="row">
+          <button id="keepDuplicateLeft" type="button">Manter card 1</button>
+          <button id="keepDuplicateRight" type="button">Manter card 2</button>
+          <button id="keepBothDuplicates" type="button">Manter ambos</button>
+        </div>
       </div>
-      <div class="row">
-        <span>Selecione os cards que deseja remover do set.</span>
-        <button id="removeCards" type="button" class="danger" disabled>Remover selecionados</button>
-        <button id="undoRemoveCards" type="button" disabled>Desfazer remoção</button>
-      </div>
-      <div id="pool"></div>
-    </div>`;
+      <form class="row" method="dialog">
+        <button id="applyDuplicates" type="button" class="primary" hidden>Aplicar remoções</button>
+        <button id="closeDuplicates" value="cancel">Fechar</button>
+      </form>
+    </dialog>`;
   initUpload(targetSet);
 }
 
@@ -491,6 +560,7 @@ function initUpload(targetSet) {
   const preview = document.getElementById('preview');
   const overlay = document.getElementById('overlay');
   const controls = document.getElementById('controls');
+  const uploadCount = document.getElementById('uploadCount');
   const pool = document.getElementById('pool');
   const prints = document.getElementById('prints');
   const printControls = document.getElementById('printControls');
@@ -498,6 +568,7 @@ function initUpload(targetSet) {
   const resetCrop = document.getElementById('resetCrop');
   const cropHint = document.getElementById('cropHint');
   const status = document.getElementById('uploadStatus');
+  const saveStatus = document.getElementById('uploadSaveStatus');
   const setName = document.getElementById('setName');
   const colsInput = document.getElementById('cols');
   const rowsInput = document.getElementById('rows');
@@ -505,6 +576,7 @@ function initUpload(targetSet) {
   const save = document.getElementById('save');
   const removeCards = document.getElementById('removeCards');
   const undoRemoveCards = document.getElementById('undoRemoveCards');
+  const reviewDuplicates = document.getElementById('reviewDuplicates');
   const tierTemplate = document.getElementById('tierTemplate');
   const templates = tierTemplate ? DB.tierTemplates() : [];
   for (const template of templates) tierTemplate.add(new Option(template.name, template.id));
@@ -541,6 +613,7 @@ function initUpload(targetSet) {
     if (!files.length) return;
     pendingBatches++;
     save.disabled = true;
+    reviewDuplicates.disabled = true;
     showStatus('Carregando prints…');
     pending = pending.then(async () => {
       const failed = [];
@@ -552,7 +625,7 @@ function initUpload(targetSet) {
           img.src = url;
           await img.decode();
           if (!drop.isConnected) break;
-          const screenshot = { img };
+          const screenshot = { img, name: file.name };
           autoSlice(screenshot);
           screenshots.push(screenshot);
           const first = prints.options.length === 0;
@@ -582,12 +655,15 @@ function initUpload(targetSet) {
     prints.selectedIndex = Math.min(index, screenshots.length - 1);
     showPrint();
     renderPool();
+    (selected() ? prints : drop).focus();
   };
 
   function showPrint() {
     const screenshot = selected();
-    controls.style.display = screenshot ? '' : 'none';
-    printControls.style.display = screenshot ? '' : 'none';
+    controls.hidden = !screenshot;
+    printControls.hidden = !screenshot;
+    drop.classList.toggle('hasPrints', !!screenshot);
+    drop.textContent = screenshot ? 'Adicionar mais prints' : 'Selecionar ou arrastar prints';
     preview.querySelector('img')?.remove();
     overlay.width = 0;
     overlay.height = 0;
@@ -690,6 +766,8 @@ function initUpload(targetSet) {
       });
     }
     save.disabled = pendingBatches > 0 || cardNumber === 0;
+    uploadCount.textContent = cardNumber === 1 ? '1 card para salvar' : `${cardNumber} cards para salvar`;
+    reviewDuplicates.disabled = pendingBatches > 0 || cardNumber < (targetSet ? 1 : 2);
     updateRemoveCards();
   }
 
@@ -700,16 +778,21 @@ function initUpload(targetSet) {
     undoRemoveCards.disabled = lastRemoval.size === 0;
   }
 
-  removeCards.onclick = () => {
+  function removeCardBatch(removals) {
+    if (!removals.size) return;
     lastRemoval.clear();
-    for (const screenshot of screenshots) {
-      if (!screenshot.selectedCards.size) continue;
+    for (const [screenshot, indices] of removals) {
       lastRemoval.set(screenshot, screenshot.cards);
-      screenshot.cards = screenshot.cards.filter((_, index) => !screenshot.selectedCards.has(index));
+      screenshot.cards = screenshot.cards.filter((_, index) => !indices.has(index));
       screenshot.selectedCards.clear();
     }
     renderPool();
     undoRemoveCards.focus();
+  }
+
+  removeCards.onclick = () => {
+    removeCardBatch(new Map(screenshots.filter(print => print.selectedCards.size)
+      .map(print => [print, print.selectedCards])));
   };
 
   undoRemoveCards.onclick = () => {
@@ -722,6 +805,8 @@ function initUpload(targetSet) {
     (pool.firstElementChild || drop).focus();
   };
 
+  initDuplicateReview(reviewDuplicates, screenshots, targetSet, removeCardBatch);
+
   function sliceByGrid(screenshot, grid, pad, automatic) {
     const { img } = screenshot;
     const { cols, rows, gridLinesX, gridLinesY } = grid;
@@ -730,13 +815,13 @@ function initUpload(targetSet) {
       const x0 = gridLinesX[c], y0 = gridLinesY[r];
       const cw = gridLinesX[c+1] - x0, ch = gridLinesY[r+1] - y0;
       const px = (automatic ? Math.min(cw, ch) : cw) * pad / 100;
-      const py = (automatic ? Math.min(cw, ch) : ch) * pad / 100;
+      const py = (automatic && !grid.fixedPosition ? Math.min(cw, ch) : ch) * pad / 100;
       const sw = cw - px*2, sh = ch - py*2;
       const cv = document.createElement('canvas');
       cv.width = sw; cv.height = sh;
       if (!cv.width || !cv.height) continue;
       cv.getContext('2d').drawImage(img, x0+px, y0+py, sw, sh, 0, 0, cv.width, cv.height);
-      if (!automatic || !isUiIcon(cv)) cards.push(cv.toDataURL('image/webp', 0.9));
+      if (!automatic || !isUiIcon(cv, grid.fixedPosition ? 52 : 60)) cards.push(cv.toDataURL('image/webp', 0.9));
     }
     lastRemoval.delete(screenshot);
     Object.assign(screenshot, { grid, pad, cards, selectedCards: new Set() });
@@ -749,14 +834,14 @@ function initUpload(targetSet) {
   // UI icons (camiseta+, shuffle) are flat shapes with very few distinct
   // colours. Real skins are photographic and have hundreds. Quantise RGB to
   // 32-step buckets and count the unique ones.
-  function isUiIcon(canvas) {
+  function isUiIcon(canvas, colorLimit) {
     const ctx = canvas.getContext('2d');
     const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const seen = new Set();
     for (let i = 0; i < data.length; i += 16) {
       const key = ((data[i] >> 5) << 10) | ((data[i+1] >> 5) << 5) | (data[i+2] >> 5);
       seen.add(key);
-      if (seen.size > 60) return false;
+      if (seen.size > colorLimit) return false;
     }
     return true;
   }
@@ -793,10 +878,10 @@ function initUpload(targetSet) {
     if (!screenshot || !colsInput.value || !rowsInput.value ||
         !colsInput.reportValidity() || !rowsInput.reportValidity() || !padInput.reportValidity()) return;
     const cols = +colsInput.value, rows = +rowsInput.value;
-    const bbox = screenshot.crop || imageBounds(screenshot.img);
+    const bbox = screenshot.crop || (screenshot.grid.fixedPosition ? screenshot.grid.bbox : imageBounds(screenshot.img));
     const gridLinesX = Array.from({ length: cols + 1 }, (_, i) => bbox.x + i * bbox.w / cols);
     const gridLinesY = Array.from({ length: rows + 1 }, (_, i) => bbox.y + i * bbox.h / rows);
-    sliceByGrid(screenshot, { cols, rows, bbox, gridLinesX, gridLinesY }, +padInput.value, false);
+    sliceByGrid(screenshot, { cols, rows, bbox, gridLinesX, gridLinesY, fixedPosition: screenshot.grid.fixedPosition }, +padInput.value, false);
     showPrint();
     renderPool();
   };
@@ -815,7 +900,8 @@ function initUpload(targetSet) {
       tags: parseSetTags(document.getElementById('newSetTags').value),
     };
     if (!s) {
-      showStatus('Set não encontrado.');
+      saveStatus.textContent = 'Set não encontrado.';
+      saveStatus.hidden = false;
       return;
     }
     s.cards = s.cards.concat(cards);
@@ -825,11 +911,155 @@ function initUpload(targetSet) {
       DB.upsertSet(s);
     } catch (error) {
       if (error.name !== 'QuotaExceededError') throw error;
-      showStatus('Armazenamento cheio. Remova algum print ou libere espaço e tente novamente.');
+      saveStatus.textContent = 'Armazenamento cheio. Remova algum print ou libere espaço e tente novamente.';
+      saveStatus.hidden = false;
       return;
     }
     location.hash = '#/set/' + s.id;
   };
+}
+
+function initDuplicateReview(trigger, screenshots, targetSet, removeCardBatch) {
+  const dialog = document.getElementById('duplicateReview');
+  const status = document.getElementById('duplicateStatus');
+  const pairView = document.getElementById('duplicatePair');
+  const leftImage = document.getElementById('duplicateLeft');
+  const rightImage = document.getElementById('duplicateRight');
+  const leftSource = document.getElementById('duplicateLeftSource');
+  const rightSource = document.getElementById('duplicateRightSource');
+  const keepLeft = document.getElementById('keepDuplicateLeft');
+  const keepRight = document.getElementById('keepDuplicateRight');
+  const keepBoth = document.getElementById('keepBothDuplicates');
+  const apply = document.getElementById('applyDuplicates');
+  const close = document.getElementById('closeDuplicates');
+  let review;
+
+  function nextPair() {
+    const { pairs, discarded } = review;
+    while (review.position < pairs.length && pairs[review.position].some(card => discarded.has(card))) {
+      review.position++;
+    }
+    const pair = pairs[review.position];
+    pairView.hidden = !pair;
+    apply.hidden = !!pair || !discarded.size;
+    close.textContent = discarded.size ? 'Cancelar' : 'Fechar';
+    if (!pair) {
+      status.textContent = discarded.size
+        ? `Cards marcados para remoção: ${discarded.size}.`
+        : pairs.length ? 'Revisão concluída. Todos os cards foram mantidos.' : 'Nenhum card parecido encontrado.';
+      (discarded.size ? apply : close).focus();
+      return;
+    }
+    const [left, right] = pair;
+    status.textContent = `Par ${review.position + 1} de ${pairs.length}.`;
+    leftImage.src = left.src;
+    rightImage.src = right.src;
+    leftSource.textContent = left.source;
+    rightSource.textContent = right.source;
+    keepLeft.textContent = left.screenshot ? 'Manter card 1' : 'Manter card do set';
+    keepRight.hidden = !left.screenshot;
+    keepBoth.focus();
+  }
+
+  function decide(discardIndex) {
+    if (discardIndex !== undefined) review.discarded.add(review.pairs[review.position][discardIndex]);
+    review.position++;
+    nextPair();
+  }
+
+  trigger.onclick = async () => {
+    const current = { position: 0, discarded: new Set(), pairs: [] };
+    review = current;
+    pairView.hidden = true;
+    apply.hidden = true;
+    close.textContent = 'Fechar';
+    status.textContent = 'Comparando cards…';
+    dialog.showModal();
+    const set = targetSet && DB.getSet(targetSet.id);
+    const placements = new Map();
+    for (const [tierId, ids] of Object.entries(set?.layout || {})) {
+      const label = set.tiers?.find(tier => tier.id === tierId)?.l || tierId;
+      for (const id of ids) placements.set(id, label);
+    }
+    const existing = (set?.cards || []).map((src, index) => {
+      const tier = placements.get('c' + index);
+      return { src, source: tier ? `Já no set · Tier ${tier}` : 'Já no set · Pool' };
+    });
+    const incoming = screenshots.flatMap(screenshot => screenshot.cards.map((src, index) => ({
+      src, screenshot, index, source: screenshot.name,
+    })));
+    current.pairs = await findDuplicatePairs(existing, incoming);
+    if (review === current && dialog.open && dialog.isConnected) nextPair();
+  };
+  keepLeft.onclick = () => decide(1);
+  keepRight.onclick = () => decide(0);
+  keepBoth.onclick = () => decide();
+  apply.onclick = () => {
+    const removals = new Map();
+    for (const { screenshot, index } of review.discarded) {
+      if (!screenshot) continue;
+      if (!removals.has(screenshot)) removals.set(screenshot, new Set());
+      removals.get(screenshot).add(index);
+    }
+    dialog.close();
+    removeCardBatch(removals);
+  };
+}
+
+async function findDuplicatePairs(existing, incoming) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 24;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const signatures = new Map();
+
+  async function signature(src) {
+    const image = new Image();
+    image.src = src;
+    try {
+      await image.decode();
+    } catch {
+      return null;
+    }
+    const { naturalWidth: w, naturalHeight: h } = image;
+    ctx.clearRect(0, 0, 24, 24);
+    ctx.drawImage(image, w*.1, h*.1, w*.8, h*.8, 0, 0, 24, 24);
+    const { data } = ctx.getImageData(0, 0, 24, 24);
+    const luminance = (x, y) => {
+      const i = (y*24+x)*4;
+      return data[i]*.299 + data[i+1]*.587 + data[i+2]*.114;
+    };
+    // Compare adjacent samples on a 9-by-8 grid to make a 64-bit difference hash.
+    const hash = [];
+    for (let y=1; y<24; y+=3) {
+      for (let x=1; x<=15; x+=2) hash.push(luminance(x, y) > luminance(x+2, y));
+    }
+    return { hash, data };
+  }
+
+  const cards = [...existing, ...incoming];
+  for (const { src } of cards) {
+    if (!signatures.has(src)) signatures.set(src, await signature(src));
+  }
+  const pairs = [];
+  for (let i=existing.length; i<cards.length; i++) {
+    const right = cards[i];
+    const b = signatures.get(right.src);
+    if (!b) continue;
+    for (let j=0; j<i; j++) {
+      const left = cards[j];
+      if (left.screenshot === right.screenshot) continue;
+      const a = signatures.get(left.src);
+      if (!a || a.hash.reduce((diff, bit, k) => diff + (bit !== b.hash[k]), 0) > 8) continue;
+      // A color check helps distinguish cards with similar silhouettes.
+      let distance = 0;
+      for (let k=0; k<a.data.length; k+=4) {
+        distance += Math.abs(a.data[k] - b.data[k]) +
+          Math.abs(a.data[k+1] - b.data[k+1]) + Math.abs(a.data[k+2] - b.data[k+2]);
+      }
+      if (distance <= 18*24*24*3) pairs.push([left, right]);
+    }
+  }
+  return pairs;
 }
 
 // ---------- grid detector (gap-colour mask + plateau runs) ----------
@@ -842,7 +1072,70 @@ function imageBounds(img) {
   return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
 }
 
-function detectGrid(img, area = imageBounds(img)) {
+function detectFullScreenGrid(data, width, height, area) {
+  // Locker layout proportions measured on the 1599 × 899 reference screenshot.
+  const cols = 8, rows = 5;
+  const left = 809.5 / 1599, expectedTop = 244.5 / 899;
+  const stepX = 85.15 / 1599, stepY = 115 / 899;
+  const pixel = (x, y) => (Math.round(y * height) * width + Math.round(x * width)) * 4;
+  function colorDistance(a, b) {
+    const dr = data[a] - data[b], dg = data[a+1] - data[b+1], db = data[a+2] - data[b+2];
+    return Math.hypot(dr, dg, db);
+  }
+
+  // A horizontal gutter should look like the neighboring vertical gutters.
+  // Fit the shared row offset using all interior seams, within a quarter row.
+  const searchRadius = Math.round(stepY * height / 4);
+  const gutterRadius = Math.round(8 * height / 899);
+  let bestOffset = 0, bestScore = Infinity;
+  for (let offset=-searchRadius; offset<=searchRadius; offset++) {
+    let score = 0;
+    for (let row=1; row<rows; row++) {
+      const seamY = Math.round((expectedTop + row * stepY) * height) + offset;
+      for (let dy=-gutterRadius; dy<=gutterRadius; dy++) {
+        const y = (seamY + dy) / height;
+        for (let col=0; col<cols; col++) {
+          const x = left + col * stepX;
+          const center = pixel(x + stepX / 2, y);
+          score += Math.min(90, colorDistance(center, pixel(x, y)),
+            colorDistance(center, pixel(x + stepX, y)));
+        }
+      }
+    }
+    if (score < bestScore || (score === bestScore && Math.abs(offset) < Math.abs(bestOffset))) {
+      bestScore = score;
+      bestOffset = offset;
+    }
+  }
+  const top = expectedTop + bestOffset / height;
+
+  // Confirm gutters between tiles in both directions before using the preset.
+  // The aspect ratio alone also matches screenshots that were already cropped.
+  let xGutters = 0, yGutters = 0;
+  for (let row=0; row<rows; row++) {
+    for (let col=0; col<cols; col++) {
+      const x = left + col * stepX, y = top + row * stepY;
+      const centerX = x + stepX / 2, centerY = y + stepY / 2;
+      if (col > 0) {
+        const seam = pixel(x, centerY), offset = 14 / 1599;
+        if (colorDistance(seam, pixel(x-offset, centerY)) >= 45 && colorDistance(seam, pixel(x+offset, centerY)) >= 45) xGutters++;
+      }
+      if (row > 0) {
+        const seam = pixel(centerX, y), offset = 19 / 899;
+        if (colorDistance(seam, pixel(centerX, y-offset)) >= 45 && colorDistance(seam, pixel(centerX, y+offset)) >= 45) yGutters++;
+      }
+    }
+  }
+  if (xGutters < 4 || yGutters < 3) return null;
+
+  const gridLinesX = Array.from({ length: cols+1 }, (_, i) => (left + i * stepX) * area.w);
+  const gridLinesY = Array.from({ length: rows+1 }, (_, i) => (top + i * stepY) * area.h);
+  const bbox = { x: gridLinesX[0], y: gridLinesY[0], w: cols * stepX * area.w, h: rows * stepY * area.h };
+  return { bbox, cols, rows, gridLinesX, gridLinesY, fixedPosition: true };
+}
+
+function detectGrid(img, crop) {
+  const area = crop || imageBounds(img);
   const maxW = 900;
   const scale = Math.min(1, maxW / area.w);
   const w = Math.max(1, Math.round(area.w * scale));
@@ -851,6 +1144,10 @@ function detectGrid(img, area = imageBounds(img)) {
   const ctx = cv.getContext('2d');
   ctx.drawImage(img, area.x, area.y, area.w, area.h, 0, 0, w, h);
   const data = ctx.getImageData(0, 0, w, h).data;
+  if (!crop && Math.abs(area.w / area.h - 16 / 9) < .04) {
+    const grid = detectFullScreenGrid(data, w, h, area);
+    if (grid) return grid;
+  }
 
   // --- find gap colour: mode of a 3-pixel border ring, bucketised to 8 ---
   const buckets = new Map();
