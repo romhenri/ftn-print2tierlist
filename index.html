@@ -19,7 +19,7 @@
   button:hover, .btn:hover { border-color:#4a5168; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button.danger { color:#ff8080; }
-  input[type=text], input[type=number] { background:var(--panel); color:var(--txt); border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font:inherit; }
+  input[type=text], input[type=number], select { background:var(--panel); color:var(--txt); border:1px solid var(--edge); border-radius:6px; padding:8px 10px; font:inherit; }
   .panel { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:16px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
   .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:12px; cursor:pointer; transition:border-color .1s; }
@@ -163,8 +163,13 @@ route('/upload', () => {
   view.innerHTML = `
     <h1>Novo set</h1>
     <div class="panel">
-      <div id="drop">Clique ou arraste o print aqui</div>
-      <input id="file" type="file" accept="image/*" hidden>
+      <button id="drop" type="button" style="width:100%">Clique ou arraste os prints aqui</button>
+      <input id="file" type="file" accept="image/*" multiple hidden>
+      <p id="uploadStatus" role="status" hidden></p>
+      <div id="printControls" class="row" style="display:none; margin-top:10px">
+        <label>Print <select id="prints"></select></label>
+        <button id="removePrint" type="button">Remover print</button>
+      </div>
       <div id="preview"><canvas id="overlay"></canvas></div>
     </div>
     <div class="panel" id="controls" style="display:none">
@@ -255,70 +260,135 @@ function initUpload() {
   const overlay = document.getElementById('overlay');
   const controls = document.getElementById('controls');
   const pool = document.getElementById('pool');
-  let img = null;
-  let cards = []; // dataURLs
+  const prints = document.getElementById('prints');
+  const printControls = document.getElementById('printControls');
+  const status = document.getElementById('uploadStatus');
+  const setName = document.getElementById('setName');
+  const colsInput = document.getElementById('cols');
+  const rowsInput = document.getElementById('rows');
+  const padInput = document.getElementById('pad');
+  const save = document.getElementById('save');
+  const screenshots = [];
+  let pending = Promise.resolve();
+  let pendingBatches = 0;
+
+  const selected = () => screenshots[prints.selectedIndex];
 
   drop.onclick = () => fileInput.click();
   drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover'); };
   drop.ondragleave = () => drop.classList.remove('hover');
-  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hover'); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); };
-  fileInput.onchange = e => e.target.files[0] && load(e.target.files[0]);
+  drop.ondrop = e => {
+    e.preventDefault();
+    drop.classList.remove('hover');
+    addFiles(e.dataTransfer.files);
+  };
+  fileInput.onchange = () => {
+    addFiles(fileInput.files);
+    fileInput.value = '';
+  };
 
-  function load(f) {
-    const i = new Image();
-    i.onload = () => {
-      img = i;
-      const old = preview.querySelector('img'); if (old) old.remove();
-      preview.insertBefore(i, overlay);
-      controls.style.display = '';
-      document.getElementById('setName').value = f.name.replace(/\.[^.]+$/, '');
-      autoSlice();
-    };
-    i.src = URL.createObjectURL(f);
+  function showStatus(message) {
+    status.textContent = message;
+    status.hidden = !message;
+  }
+
+  function addFiles(fileList) {
+    const files = Array.from(fileList);
+    if (!files.length) return;
+    pendingBatches++;
+    save.disabled = true;
+    showStatus('Carregando prints…');
+    pending = pending.then(async () => {
+      const failed = [];
+      for (const file of files) {
+        if (!drop.isConnected) break;
+        const url = URL.createObjectURL(file);
+        try {
+          const img = new Image();
+          img.src = url;
+          await img.decode();
+          if (!drop.isConnected) break;
+          const screenshot = { img, pad: 8 };
+          autoSlice(screenshot);
+          screenshots.push(screenshot);
+          const first = prints.options.length === 0;
+          prints.add(new Option(file.name));
+          if (first && !setName.value) setName.value = file.name.replace(/\.[^.]+$/, '');
+        } catch {
+          failed.push(file.name);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+      pendingBatches--;
+      if (!drop.isConnected) return;
+      showStatus(pendingBatches ? 'Carregando prints…' :
+        failed.length ? 'Não foi possível carregar: ' + failed.join(', ') : '');
+      showPrint();
+      renderPool();
+    });
+  }
+
+  prints.onchange = showPrint;
+  document.getElementById('removePrint').onclick = () => {
+    const index = prints.selectedIndex;
+    screenshots.splice(index, 1);
+    prints.remove(index);
+    prints.selectedIndex = Math.min(index, screenshots.length - 1);
+    showPrint();
+    renderPool();
+  };
+
+  function showPrint() {
+    const screenshot = selected();
+    controls.style.display = screenshot ? '' : 'none';
+    printControls.style.display = screenshot ? '' : 'none';
+    preview.querySelector('img')?.remove();
+    overlay.width = 0;
+    overlay.height = 0;
+    if (!screenshot) return;
+    const { img, grid, pad } = screenshot;
+    img.alt = prints.options[prints.selectedIndex].text;
+    preview.insertBefore(img, overlay);
+    colsInput.value = grid.cols;
+    rowsInput.value = grid.rows;
+    padInput.value = pad;
+    drawOverlay(img, grid.bbox, grid.gridLinesX, grid.gridLinesY);
   }
 
   function renderPool() {
     pool.innerHTML = '';
+    const cards = screenshots.flatMap(screenshot => screenshot.cards);
     for (const src of cards) {
       const d = document.createElement('div');
       d.className = 'cell';
       d.style.backgroundImage = `url(${src})`;
       pool.appendChild(d);
     }
+    save.disabled = pendingBatches > 0 || !cards.length;
   }
 
-  function sliceByGrid(cols, rows, padPct) {
-    cards = [];
-    const cw = img.naturalWidth / cols, ch = img.naturalHeight / rows;
-    const px = cw * padPct, py = ch * padPct;
+  function sliceByGrid(screenshot, grid, pad, automatic) {
+    const { img } = screenshot;
+    const { cols, rows, gridLinesX, gridLinesY } = grid;
+    const cards = [];
     for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
-      const cv = document.createElement('canvas');
+      const x0 = gridLinesX[c], y0 = gridLinesY[r];
+      const cw = gridLinesX[c+1] - x0, ch = gridLinesY[r+1] - y0;
+      const px = (automatic ? Math.min(cw, ch) : cw) * pad / 100;
+      const py = (automatic ? Math.min(cw, ch) : ch) * pad / 100;
       const sw = cw - px*2, sh = ch - py*2;
-      cv.width = sw; cv.height = sh;
-      cv.getContext('2d').drawImage(img, c*cw+px, r*ch+py, sw, sh, 0, 0, sw, sh);
-      cards.push(cv.toDataURL('image/png'));
-    }
-    renderPool();
-  }
-
-  function autoSlice() {
-    const { bbox, cols, rows, gridLinesX, gridLinesY } = detectGrid(img);
-    document.getElementById('cols').value = cols;
-    document.getElementById('rows').value = rows;
-    cards = [];
-    for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
-      const x0 = gridLinesX[c], x1 = gridLinesX[c+1];
-      const y0 = gridLinesY[r], y1 = gridLinesY[r+1];
-      const pad = Math.min(x1-x0, y1-y0) * 0.08;
-      const sx = x0 + pad, sy = y0 + pad;
-      const sw = (x1-x0) - pad*2, sh = (y1-y0) - pad*2;
       const cv = document.createElement('canvas');
       cv.width = sw; cv.height = sh;
-      cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-      if (!isUiIcon(cv)) cards.push(cv.toDataURL('image/png'));
+      if (!cv.width || !cv.height) continue;
+      cv.getContext('2d').drawImage(img, x0+px, y0+py, sw, sh, 0, 0, cv.width, cv.height);
+      if (!automatic || !isUiIcon(cv)) cards.push(cv.toDataURL('image/webp', 0.9));
     }
-    renderPool();
-    drawOverlay(bbox, gridLinesX, gridLinesY);
+    Object.assign(screenshot, { grid, pad, cards });
+  }
+
+  function autoSlice(screenshot) {
+    sliceByGrid(screenshot, detectGrid(screenshot.img), 8, true);
   }
 
   // UI icons (camiseta+, shuffle) are flat shapes with very few distinct
@@ -336,9 +406,8 @@ function initUpload() {
     return true;
   }
 
-  function drawOverlay(bbox, linesX, linesY) {
-    const el = preview.querySelector('img');
-    const w = el.clientWidth, h = el.clientHeight;
+  function drawOverlay(img, bbox, linesX, linesY) {
+    const w = img.clientWidth, h = img.clientHeight;
     overlay.width = w; overlay.height = h;
     overlay.style.width = w+'px'; overlay.style.height = h+'px';
     const ctx = overlay.getContext('2d');
@@ -352,18 +421,36 @@ function initUpload() {
   }
 
   document.getElementById('refatiar').onclick = () => {
-    const cols = +document.getElementById('cols').value;
-    const rows = +document.getElementById('rows').value;
-    const pad = +document.getElementById('pad').value / 100;
-    if (img && cols && rows) sliceByGrid(cols, rows, pad);
+    const screenshot = selected();
+    if (!screenshot || !colsInput.value || !rowsInput.value ||
+        !colsInput.reportValidity() || !rowsInput.reportValidity() || !padInput.reportValidity()) return;
+    const cols = +colsInput.value, rows = +rowsInput.value;
+    const { naturalWidth: w, naturalHeight: h } = screenshot.img;
+    const gridLinesX = Array.from({ length: cols + 1 }, (_, i) => i * w / cols);
+    const gridLinesY = Array.from({ length: rows + 1 }, (_, i) => i * h / rows);
+    sliceByGrid(screenshot, { cols, rows, bbox: { x: 0, y: 0, w, h }, gridLinesX, gridLinesY }, +padInput.value, false);
+    showPrint();
+    renderPool();
   };
-  document.getElementById('autobtn').onclick = autoSlice;
+  document.getElementById('autobtn').onclick = () => {
+    if (!selected()) return;
+    autoSlice(selected());
+    showPrint();
+    renderPool();
+  };
 
-  document.getElementById('save').onclick = () => {
-    if (!cards.length) return;
-    const name = document.getElementById('setName').value.trim() || 'Set sem nome';
+  save.onclick = () => {
+    const cards = screenshots.flatMap(screenshot => screenshot.cards);
+    if (pendingBatches || !cards.length) return;
+    const name = setName.value.trim() || 'Set sem nome';
     const s = { id: uid(), name, createdAt: Date.now(), cards };
-    DB.upsertSet(s);
+    try {
+      DB.upsertSet(s);
+    } catch (error) {
+      if (error.name !== 'QuotaExceededError') throw error;
+      showStatus('Armazenamento cheio. Remova algum print ou libere espaço e tente novamente.');
+      return;
+    }
     location.hash = '#/set/' + s.id;
   };
 }
