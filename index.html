@@ -14,6 +14,7 @@
   nav a.active, nav a:hover { color:var(--txt); background:var(--panel); }
   nav .spacer { flex:1; }
   main { padding:20px; max-width:1200px; margin:0 auto; }
+  main.extended { max-width:none; }
   h1 { font-size:20px; margin:0 0 16px; }
   h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
   button, .btn { background:var(--panel); color:var(--txt); border:1px solid var(--edge); border-radius:6px; padding:8px 14px; cursor:pointer; font:inherit; text-decoration:none; display:inline-block; }
@@ -70,7 +71,10 @@
   .setHeaderRow, .setFilters, .tierHeader { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
   .setHeaderRow h1 { flex:1 1 220px; min-width:0; margin:0; overflow-wrap:anywhere; }
   .setActions, .tierActions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-  .setExportActions { display:flex; flex-wrap:wrap; gap:8px; }
+  .setExportActions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .exportControls { margin:12px 0; }
+  .exportWrap { display:flex; align-items:center; gap:6px; color:var(--muted); }
+  .exportWrap output { min-width:2ch; color:var(--txt); }
   .setFilters, .moveToolbar { padding:12px 16px; }
   .setSearch { flex:1 1 230px; }
   .setSearch input { flex:1; min-width:0; }
@@ -79,18 +83,23 @@
   .moveActions select { max-width:160px; }
   .tierHeader { margin-bottom:12px; }
   .tierHeader h2 { margin:0; }
-  .tierTemplateMenu { position:relative; }
-  .tierTemplateMenu summary { list-style:none; }
-  .tierTemplateMenu summary::-webkit-details-marker { display:none; }
-  .tierTemplateMenu summary::after { content:'▾'; margin-left:8px; }
-  .tierTemplateOptions { position:absolute; top:calc(100% + 4px); right:0; z-index:4; min-width:max-content; padding:4px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.3); }
-  .tierTemplateOptions button { display:block; width:100%; text-align:left; border-color:transparent; }
+  .tierTemplateMenu, .setMenu { position:relative; }
+  .printList { list-style:none; margin:0 0 12px; padding:0; min-width:320px; }
+  .printList li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--edge); }
+  .tierTemplateMenu summary, .setMenu summary { list-style:none; }
+  .tierTemplateMenu summary::-webkit-details-marker, .setMenu summary::-webkit-details-marker { display:none; }
+  .tierTemplateMenu summary::after, .setMenu summary::after { content:'▾'; margin-left:8px; }
+  .tierTemplateOptions, .setMenuOptions { position:absolute; top:calc(100% + 4px); right:0; z-index:4; min-width:max-content; padding:4px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.3); }
+  .tierTemplateOptions button, .setMenuOptions :is(button, .btn) { display:block; box-sizing:border-box; width:100%; text-align:left; border-color:transparent; }
   .moveToolbar button:disabled, .tierActions button:disabled { opacity:.5; cursor:default; border-color:var(--edge); }
   .editor { display:grid; grid-template-columns:300px minmax(0, 1fr); gap:16px; }
   @media (max-width: 900px) { .editor { grid-template-columns:minmax(0, 1fr); } }
   #pool { display:flex; flex-wrap:wrap; gap:6px; min-height:92px; padding:8px; border:1px dashed var(--edge); border-radius:8px; }
   .cell { width:60px; height:80px; border-radius:14px; background-size:cover; background-position:center; cursor:grab; box-shadow:0 1px 3px rgba(0,0,0,.5); }
   .cell.drag { opacity:.4; }
+  .poolHead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .poolHead h2 { margin:0; }
+  .poolHead button { padding:4px 10px; }
   #pool button.cell { padding:0; cursor:pointer; }
   .cell[aria-pressed="true"] { box-shadow:inset 0 0 0 3px #ffd84d; }
   .cell:focus-visible { outline:2px solid var(--txt); outline-offset:2px; }
@@ -104,8 +113,8 @@
   .duplicatePair img { display:block; max-width:100%; width:140px; height:160px; object-fit:contain; margin:0 auto 8px; }
   .duplicatePair figcaption { overflow-wrap:anywhere; color:var(--muted); }
   .exportPreview { overflow:auto; }
-  .exportPreview img { display:block; max-width:100%; height:auto; margin:0 auto; }
-  .exportPreview.actualSize img { max-width:none; }
+  .exportPreview :is(img, canvas) { display:block; max-width:100%; height:auto; margin:0 auto; }
+  .exportPreview.actualSize :is(img, canvas) { max-width:none; }
   .tier { display:grid; grid-template-columns: 56px 1fr; border:1px solid var(--edge); border-radius:8px; margin-bottom:8px; }
   .tier .lblWrap { position:relative; border-radius:7px 0 0 7px; }
   .tier .drop { border-radius:0 7px 7px 0; }
@@ -150,7 +159,42 @@ const DB = {
   getSet: id => DB.sets().find(s => s.id === id),
   upsertSet: s => { const a = DB.sets(); const i = a.findIndex(x => x.id === s.id); if (i<0) a.unshift(s); else a[i] = s; DB.saveSets(a); },
   delSet: id => DB.saveSets(DB.sets().filter(s => s.id !== id)),
-  delExport: id => DB.saveExports(DB.exports().filter(e => e.id !== id)),
+  delExport: id => {
+    DB.saveExports(DB.exports().filter(e => e.id !== id));
+    ExportImages.del(id).catch(() => {});
+    ExportImages.del(id + ':data').catch(() => {});
+  },
+};
+
+// Export PNGs are too big for localStorage, so their bytes live in IndexedDB keyed by export id.
+// Exports saved before this keep their data URL in `png`.
+const ExportImages = {
+  open() {
+    return this.db ??= new Promise((resolve, reject) => {
+      const req = indexedDB.open('print2tierlist', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('exportImages');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async run(mode, action) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('exportImages', mode);
+      const req = action(tx.objectStore('exportImages'));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  },
+  put: (id, blob) => ExportImages.run('readwrite', store => store.put(blob, id)),
+  get: id => ExportImages.run('readonly', store => store.get(id)),
+  del: id => ExportImages.run('readwrite', store => store.delete(id)),
+  // ponytail: object URLs are never revoked; they are freed when the tab closes.
+  async url(exported) {
+    if (exported.png) return exported.png;
+    const blob = await ExportImages.get(exported.id);
+    return blob ? URL.createObjectURL(blob) : '';
+  },
 };
 const uid = () => Math.random().toString(36).slice(2,10);
 const fmtDate = ts => new Date(ts).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
@@ -198,6 +242,7 @@ function matchRoute(hash) {
 function render() {
   const m = matchRoute(location.hash) || { fn: routes['/sets'], params:{} };
   view.innerHTML = '';
+  view.classList.remove('extended');
   m.fn(m.params);
   for (const a of document.querySelectorAll('nav a')) {
     a.classList.toggle('active', location.hash.startsWith('#'+a.dataset.route));
@@ -238,6 +283,7 @@ route('/sets', () => {
       <div class="setTags"></div>
       <div class="row" style="margin-top:8px"><a class="btn" data-open href="#/set/${encodeURIComponent(s.id)}">Abrir</a><button class="danger" data-del="${s.id}">Excluir</button></div>`;
     c.querySelector('.ttl').textContent = s.name;
+    if (s.cards[idx]) showCover(c.querySelector('.thumb img'), s.cards[idx]);
     showSetTags(c.querySelector('.setTags'), s.tags);
     const tagKeys = new Set();
     for (const tag of s.tags || []) {
@@ -281,7 +327,7 @@ route('/sets', () => {
       s.coverIndex = ((s.coverIndex ?? 0) + 1) % s.cards.length;
       DB.upsertSet(s);
       const img = e.target.parentElement.querySelector('img');
-      if (img) img.src = s.cards[s.coverIndex];
+      if (img) showCover(img, s.cards[s.coverIndex]);
     }
     if (!e.target.closest('a, button')) {
       const open = e.target.closest('.card')?.querySelector('[data-open]');
@@ -388,10 +434,18 @@ route('/set/:id', ({ id }) => {
       <div class="setHeaderRow">
         <h1 id="setTitle" contenteditable spellcheck="false"></h1>
         <div class="setActions">
-          <button id="editSetTags" type="button">Editar tags</button>
-          <a class="btn" href="#/set/${set.id}/upload">Adicionar prints</a>
+          <details class="setMenu" id="setMenu">
+            <summary class="btn">Opções</summary>
+            <div class="setMenuOptions">
+              <button id="editSetTags" type="button">Editar tags</button>
+              <a class="btn" href="#/set/${set.id}/upload">Adicionar prints</a>
+              <button id="managePrints" type="button">Gerenciar prints</button>
+              <button id="sheetBtn" type="button">Baixar preview do set</button>
+              <button id="extendedBtn" type="button" title="Usa toda a largura da tela para as tiers"></button>
+              <button id="upscaleBtn" type="button" title="Mostra e exporta os cards ampliados com suavização e nitidez"></button>
+            </div>
+          </details>
           <div class="setExportActions" role="group" aria-label="Exportação">
-            <button id="sheetBtn" type="button">Baixar preview do set</button>
             <button class="primary" id="exportBtn" type="button">Exportar PNG</button>
           </div>
         </div>
@@ -403,7 +457,7 @@ route('/set/:id', ({ id }) => {
       <button id="moveCards" type="button" disabled>Mover selecionados</button>
     </div>
     <div class="editor">
-      <div class="panel"><h2>Pool</h2><div id="pool"></div></div>
+      <div class="panel"><div class="poolHead"><h2>Pool</h2><button id="poolOrder" type="button" title="Inverter a ordem dos cards do pool">⇅ Inverter</button></div><div id="pool"></div></div>
       <div class="panel">
         <div class="tierHeader">
           <h2>Tiers</h2>
@@ -421,6 +475,15 @@ route('/set/:id', ({ id }) => {
         <div id="tiers"></div>
       </div>
     </div>
+    <dialog id="printsDialog" aria-labelledby="printsHeading">
+      <h2 id="printsHeading">Gerenciar prints</h2>
+      <ul class="printList" id="printList"></ul>
+      <div class="row">
+        <button id="removeSelectedCards" class="danger" type="button"></button>
+        <button id="clearCards" class="danger" type="button">Remover todos os cards</button>
+      </div>
+      <form method="dialog"><div class="row"><button>Fechar</button></div></form>
+    </dialog>
     <dialog id="setTagDialog" aria-labelledby="setTagHeading">
       <form method="dialog">
         <h2 id="setTagHeading">Tags do set</h2>
@@ -457,6 +520,28 @@ route('/set/:id', ({ id }) => {
   };
   title.addEventListener('blur', saveName);
   title.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); title.blur(); } });
+  const setMenu = document.getElementById('setMenu');
+  // Close after an action, but keep it open when toggling a mode so the new label is visible.
+  setMenu.querySelector('.setMenuOptions').addEventListener('click', event => {
+    if (event.target.closest('button, a') && !['upscaleBtn', 'extendedBtn'].includes(event.target.id)) setMenu.open = false;
+  });
+  const extendedBtn = document.getElementById('extendedBtn');
+  const applyExtended = () => {
+    view.classList.toggle('extended', !!set.extended);
+    extendedBtn.textContent = set.extended ? 'Desativar modo estendido' : 'Ativar modo estendido';
+  };
+  applyExtended();
+  extendedBtn.onclick = () => {
+    set.extended = !set.extended;
+    DB.upsertSet(set);
+    applyExtended();
+  };
+  setMenu.onkeydown = event => {
+    if (event.key !== 'Escape' || !setMenu.open) return;
+    event.preventDefault();
+    setMenu.open = false;
+    setMenu.querySelector('summary').focus();
+  };
   const tags = document.getElementById('setTags');
   const tagDialog = document.getElementById('setTagDialog');
   const tagsInput = document.getElementById('setTagsInput');
@@ -483,6 +568,45 @@ route('/set/:id', ({ id }) => {
     showSetTags(tags, set.tags);
     tagDialog.close();
   };
+
+  const printsDialog = document.getElementById('printsDialog');
+  const printList = document.getElementById('printList');
+  const removeSelected = document.getElementById('removeSelectedCards');
+  const clearCards = document.getElementById('clearCards');
+  const range = (start, count) => new Set(Array.from({ length: count }, (_, i) => start + i));
+  const applyRemoval = (indices, question) => {
+    if (!indices.size || !confirm(question)) return;
+    removeCards(set, indices);
+    DB.upsertSet(set);
+    printsDialog.close();
+    render();
+  };
+  document.getElementById('managePrints').onclick = () => {
+    printList.replaceChildren();
+    let start = 0;
+    for (const print of setPrints(set)) {
+      const indices = range(start, print.count);
+      start += print.count;
+      const item = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = `${print.name} · ${print.count} cards` + (print.addedAt ? ` · ${fmtDate(print.addedAt)}` : '');
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'danger';
+      remove.textContent = 'Remover';
+      remove.onclick = () => applyRemoval(indices, `Remover "${print.name}" e seus ${print.count} cards?`);
+      item.append(label, remove);
+      printList.append(item);
+    }
+    if (!printList.children.length) printList.innerHTML = '<li>Nenhum print neste set.</li>';
+    const selected = new Set([...view.querySelectorAll('.cell[id^="cell-c"][aria-pressed="true"]')].map(cell => +cell.id.slice(6)));
+    removeSelected.textContent = `Remover cards selecionados (${selected.size})`;
+    removeSelected.disabled = !selected.size;
+    removeSelected.onclick = () => applyRemoval(selected, `Remover ${selected.size} cards selecionados?`);
+    clearCards.disabled = !set.cards.length;
+    clearCards.onclick = () => applyRemoval(range(0, set.cards.length), `Remover todos os ${set.cards.length} cards do set?`);
+    printsDialog.showModal();
+  };
   initEditor(set);
 });
 
@@ -500,9 +624,11 @@ route('/exports', () => {
       <div class="row" style="margin-top:8px"><a class="btn" data-dl="${e.id}">Baixar</a><button class="danger" data-del="${e.id}">Excluir</button></div>`;
     const thumb = c.querySelector('.thumb');
     thumb.setAttribute('aria-label', 'Visualizar ' + e.name);
-    thumb.querySelector('img').src = e.png;
     c.querySelector('.ttl').textContent = e.name;
-    c.querySelector('[data-dl]').href = e.png;
+    ExportImages.url(e).then(url => {
+      thumb.querySelector('img').src = url;
+      c.querySelector('[data-dl]').href = url;
+    });
     c.querySelector('[data-dl]').download = e.name + '.png';
     c.onclick = event => {
       if (!event.target.closest('a, button, [contenteditable]')) location.hash = thumb.hash;
@@ -537,18 +663,72 @@ route('/exports/:id', ({ id }) => {
       <a class="btn" href="#/exports">← Exports</a>
       ${exported ? '<h1 id="exportTitle" style="flex:1;margin:0"></h1><button id="exportZoom" type="button" aria-pressed="false">Tamanho original</button><a class="btn" id="exportDownload">Baixar</a>' : ''}
     </div>
-    ${exported ? '<div class="exportPreview"><img id="exportImage"></div>' : '<p>Export não encontrado.</p>'}`;
+    ${exported ? `<div class="row exportControls" id="exportControls" hidden>
+      <label class="exportWrap" title="Quantos cards cabem numa linha da tier antes de quebrar">Cards por linha
+        <input id="exportWrap" type="range" min="1" step="1"><output id="exportWrapValue"></output></label>
+      <label class="exportWrap">Proporção <select id="exportRatio">
+        <option value="">Livre</option><option>1:1</option><option>16:9</option><option>9:16</option>
+        <option>4:3</option><option>3:4</option><option>4:5</option></select></label>
+    </div>
+    <div class="exportPreview"><img id="exportImage"></div>` : '<p>Export não encontrado.</p>'}`;
   if (!exported) return;
   document.getElementById('exportTitle').textContent = exported.name;
   const img = document.getElementById('exportImage');
   img.alt = exported.name;
-  img.src = exported.png;
   const download = document.getElementById('exportDownload');
-  download.href = exported.png;
+  ExportImages.url(exported).then(url => { img.src = url; download.href = url; });
+  // Exports made after the editable layout was added keep their tiers, so the PNG can be redrawn here.
+  ExportImages.get(id + ':data').then(async data => {
+    if (!data || !img.isConnected) return;
+    const images = await loadTierlistImages(data);
+    const counts = data.tiers.map(tier => tier.cards.length);
+    const wrap = document.getElementById('exportWrap');
+    const wrapValue = document.getElementById('exportWrapValue');
+    const ratio = document.getElementById('exportRatio');
+    wrap.max = Math.max(1, ...counts);
+    wrap.value = wrapValue.value = Math.min(exported.perRow ?? 12, wrap.max);
+    ratio.value = exported.ratio || '';
+    document.getElementById('exportControls').hidden = false;
+    const box = img.parentElement;
+    let version = 0, shownUrl = '', frame = 0;
+    const draw = () => drawTierlist(data, images, +wrap.value, parseRatio(ratio.value));
+    // While dragging, show the canvas itself: encoding a PNG on every step is what lags.
+    const preview = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const cv = draw();
+        cv.setAttribute('aria-label', exported.name);
+        box.replaceChildren(cv);
+      });
+    };
+    const redraw = async persist => {
+      cancelAnimationFrame(frame);
+      const current = ++version;
+      const cv = draw();
+      const blob = await new Promise(resolve => cv.toBlob(resolve, 'image/png'));
+      if (current !== version) return;
+      if (shownUrl) URL.revokeObjectURL(shownUrl);
+      img.src = download.href = shownUrl = URL.createObjectURL(blob);
+      await img.decode().catch(() => {});
+      if (current !== version) return;
+      box.replaceChildren(img);
+      if (!persist) return;
+      await ExportImages.put(id, blob);
+      const all = DB.exports();
+      const entry = all.find(e => e.id === id);
+      if (entry) { Object.assign(entry, { perRow: +wrap.value, ratio: ratio.value }); delete entry.png; DB.saveExports(all); }
+    };
+    wrap.oninput = () => { wrapValue.value = wrap.value; preview(); };
+    wrap.onchange = () => redraw(true);
+    ratio.onchange = () => {
+      if (ratio.value) wrap.value = wrapValue.value = bestPerRow(counts, parseRatio(ratio.value));
+      redraw(true);
+    };
+  });
   download.download = exported.name + '.png';
   const zoom = document.getElementById('exportZoom');
   zoom.onclick = () => {
-    const actualSize = img.parentElement.classList.toggle('actualSize');
+    const actualSize = document.querySelector('.exportPreview').classList.toggle('actualSize');
     zoom.setAttribute('aria-pressed', actualSize);
   };
 });
@@ -904,6 +1084,8 @@ function initUpload(targetSet) {
       saveStatus.hidden = false;
       return;
     }
+    s.prints = setPrints(s).concat(screenshots.filter(print => print.cards.length)
+      .map(print => ({ name: print.name, count: print.cards.length, addedAt: Date.now() })));
     s.cards = s.cards.concat(cards);
     const template = tierTemplate && templates.find(t => t.id === tierTemplate.value);
     if (template) s.tiers = template.tiers.map((tier, i) => ({ ...tier, id: 't' + i }));
@@ -1306,6 +1488,13 @@ function initEditor(set) {
   for (const [id, src] of srcMap) {
     if (!placed.has(id)) pool.appendChild(makeCell(id, src));
   }
+  const reversePool = () => pool.append(...[...pool.children].reverse());
+  if (set.poolReversed) reversePool();
+  document.getElementById('poolOrder').onclick = () => {
+    set.poolReversed = !set.poolReversed;
+    reversePool();
+    DB.upsertSet(set);
+  };
   updateDestinations();
 
   function updateSelection() {
@@ -1513,7 +1702,7 @@ function initEditor(set) {
     d.className = 'cell';
     d.id = 'cell-'+id;
     d.draggable = true;
-    d.style.backgroundImage = `url(${src})`;
+    showCard(d);
     d.setAttribute('aria-pressed', 'false');
     d.setAttribute('aria-label', 'Card ' + (Number(id.slice(1)) + 1));
     d.onclick = () => {
@@ -1547,54 +1736,51 @@ function initEditor(set) {
     DB.upsertSet(set);
   }
 
+  // Shows the original right away, then swaps in the upscaled version when it is ready.
+  function showCard(cell) {
+    const src = srcMap.get(cell.id.slice(5));
+    cell.style.backgroundImage = `url(${src})`;
+    if (set.upscale !== false) enhanceCard(src).then(url => {
+      if (set.upscale !== false) cell.style.backgroundImage = `url(${url})`;
+    });
+  }
+  const upscaleBtn = document.getElementById('upscaleBtn');
+  const upscaleLabel = () => { upscaleBtn.textContent = set.upscale !== false ? 'Desativar upscale' : 'Ativar upscale'; };
+  upscaleLabel();
+  upscaleBtn.onclick = () => {
+    set.upscale = set.upscale === false;
+    upscaleLabel();
+    DB.upsertSet(set);
+    view.querySelectorAll('.cell[id^="cell-"]').forEach(showCard);
+  };
+
   document.getElementById('exportBtn').onclick = async () => {
-    const rows = [...tiersEl.querySelectorAll('.tier')];
-    const cellW = 72, cellH = 96, pad = 10, radius = 14;
-    const wide = true;
-    const labelW = 128;
-    // Pick one font size that fits every label into labelW.
-    const availText = labelW - pad * 2;
-    const MIN = 12, MAX = 32;
-    let labelFont = MAX;
-    for (const r of rows) {
-      const txt = r.querySelector('.lbl').textContent.trim() || ' ';
-      const w = measureAtPx(txt, MAX);
-      if (w > availText) labelFont = Math.min(labelFont, Math.max(MIN, MAX * availText / w));
-    }
-    const maxCells = Math.max(1, ...rows.map(r => r.querySelectorAll('.cell').length));
-    const width = labelW + pad + maxCells*(cellW+pad) + pad;
-    const height = pad + rows.length*(cellH+pad);
-    const cv = document.createElement('canvas');
-    cv.width = width; cv.height = height;
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#141822'; ctx.fillRect(0,0,width,height);
-    for (let i=0; i<rows.length; i++) {
-      const y = pad + i*(cellH+pad);
-      const lbl = rows[i].querySelector('.lbl');
-      const wrap = rows[i].querySelector('.lblWrap');
-      ctx.fillStyle = (wrap && wrap.style.background) || lbl.style.background || lbl.style.backgroundColor;
-      roundRect(ctx, pad, y, labelW-pad, cellH, 8); ctx.fill();
-      const txt = lbl.textContent;
-      ctx.fillStyle = '#111';
-      ctx.font = `bold ${labelFont.toFixed(1)}px system-ui`;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      wrapText(ctx, txt, pad + (labelW-pad)/2, y + cellH/2, labelW - pad*2, labelFont * 1.1);
-      const cells = [...rows[i].querySelectorAll('.cell')];
-      for (let j=0; j<cells.length; j++) {
-        const src = cells[j].style.backgroundImage.slice(5,-2);
-        const im = new Image();
-        await new Promise(r => { im.onload = r; im.src = src; });
-        const cx = labelW + pad + j*(cellW+pad);
-        ctx.save();
-        roundRect(ctx, cx, y, cellW, cellH, radius); ctx.clip();
-        ctx.drawImage(im, cx, y, cellW, cellH);
-        ctx.restore();
+    const upscale = set.upscale !== false;
+    const tiers = [];
+    for (const row of tiersEl.querySelectorAll('.tier')) {
+      const lbl = row.querySelector('.lbl');
+      const wrap = row.querySelector('.lblWrap');
+      const cards = [];
+      for (const cell of row.querySelectorAll('.cell')) {
+        const src = srcMap.get(cell.id.slice(5));
+        cards.push(upscale ? await enhanceCard(src) : src);
       }
+      tiers.push({ l: lbl.textContent, c: (wrap && wrap.style.background) || lbl.style.background || lbl.style.backgroundColor, cards });
     }
-    const png = cv.toDataURL('image/png');
-    const exp = { id: uid(), setId: set.id, name: set.name + ' tierlist', createdAt: Date.now(), png };
-    const all = DB.exports(); all.unshift(exp); DB.saveExports(all);
-    location.hash = '#/exports';
+    const data = { scale: upscale ? 2 : 1, tiers };
+    const exp = { id: uid(), setId: set.id, name: set.name + ' tierlist', createdAt: Date.now(), perRow: 12, ratio: '' };
+    try {
+      const cv = drawTierlist(data, await loadTierlistImages(data), exp.perRow, 0);
+      await ExportImages.put(exp.id, await new Promise(resolve => cv.toBlob(resolve, 'image/png')));
+      await ExportImages.put(exp.id + ':data', data);
+      const all = DB.exports(); all.unshift(exp); DB.saveExports(all);
+    } catch (error) {
+      ExportImages.del(exp.id).catch(() => {});
+      ExportImages.del(exp.id + ':data').catch(() => {});
+      alert('Não foi possível salvar o export: ' + error.message);
+      return;
+    }
+    location.hash = '#/exports/' + encodeURIComponent(exp.id);
   };
 
   document.getElementById('sheetBtn').onclick = async () => {
@@ -1650,6 +1836,160 @@ function fitTierFont() {
     if (w > avail) size = Math.min(size, Math.max(MIN, MAX * avail / w));
   }
   tiers.style.setProperty('--tier-font', size.toFixed(1) + 'px');
+}
+
+// ---------- tier list drawing (export) ----------
+const TIERLIST = { cellW: 72, cellH: 96, pad: 10, radius: 14, labelW: 128 };
+const parseRatio = value => { const [w, h] = value.split(':').map(Number); return w && h ? w / h : 0; };
+
+function tierlistSize(counts, perRow) {
+  const { cellW, cellH, pad, labelW } = TIERLIST;
+  const lines = counts.map(n => Math.max(1, Math.ceil(n / perRow)));
+  const maxCells = Math.min(perRow, Math.max(1, ...counts));
+  return {
+    lines,
+    width: labelW + pad + maxCells * (cellW + pad) + pad,
+    height: pad + lines.reduce((sum, n) => sum + n * (cellH + pad), 0),
+  };
+}
+
+// Cards per line whose tier list comes closest to the ratio before padding.
+function bestPerRow(counts, ratio) {
+  let best = 1, bestError = Infinity;
+  for (let perRow = 1; perRow <= Math.max(1, ...counts); perRow++) {
+    const { width, height } = tierlistSize(counts, perRow);
+    const error = Math.abs(Math.log(width / height / ratio));
+    if (error < bestError) { best = perRow; bestError = error; }
+  }
+  return best;
+}
+
+function loadTierlistImages(data) {
+  return Promise.all(data.tiers.map(tier => Promise.all(tier.cards.map(src => new Promise(resolve => {
+    const im = new Image();
+    im.onload = im.onerror = () => resolve(im);
+    im.src = src;
+  })))));
+}
+
+// data: { scale, tiers: [{ l, c, cards: [src] }] }. With a ratio, the canvas is padded to match it.
+function drawTierlist(data, images, perRow, ratio) {
+  const { cellW, cellH, pad, radius, labelW } = TIERLIST;
+  const { lines, width, height } = tierlistSize(data.tiers.map(tier => tier.cards.length), perRow);
+  let W = width, H = height;
+  if (ratio) { if (W / H < ratio) W = Math.round(H * ratio); else H = Math.round(W / ratio); }
+  const availText = labelW - pad * 2, MIN = 12, MAX = 32;
+  let labelFont = MAX;
+  for (const tier of data.tiers) {
+    const w = measureAtPx(tier.l.trim() || ' ', MAX);
+    if (w > availText) labelFont = Math.min(labelFont, Math.max(MIN, MAX * availText / w));
+  }
+  const cv = document.createElement('canvas');
+  cv.width = W * data.scale; cv.height = H * data.scale;
+  const ctx = cv.getContext('2d');
+  ctx.scale(data.scale, data.scale);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#141822'; ctx.fillRect(0, 0, W, H);
+  ctx.translate((W - width) / 2, (H - height) / 2);
+  let y = pad;
+  data.tiers.forEach((tier, i) => {
+    const tierH = lines[i] * (cellH + pad) - pad;
+    ctx.fillStyle = tier.c;
+    roundRect(ctx, pad, y, labelW - pad, tierH, 8); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.font = `bold ${labelFont.toFixed(1)}px system-ui`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    wrapText(ctx, tier.l, pad + (labelW - pad) / 2, y + tierH / 2, labelW - pad * 2, labelFont * 1.1);
+    images[i].forEach((im, j) => {
+      const cx = labelW + pad + (j % perRow) * (cellW + pad);
+      const cy = y + Math.floor(j / perRow) * (cellH + pad);
+      ctx.save();
+      roundRect(ctx, cx, cy, cellW, cellH, radius); ctx.clip();
+      ctx.drawImage(im, cx, cy, cellW, cellH);
+      ctx.restore();
+    });
+    y += tierH + pad;
+  });
+  return cv;
+}
+
+// Cards are stored in print order, so each print owns the next `count` cards.
+// Sets saved before prints were tracked get one group for their existing cards.
+function setPrints(set) {
+  return set.prints ?? (set.cards.length ? [{ name: 'Prints anteriores', count: set.cards.length }] : []);
+}
+
+// Drops cards by index and renumbers card ids in the layout, print counts and cover.
+function removeCards(set, removed) {
+  const newId = new Map(), cards = [];
+  set.cards.forEach((src, i) => {
+    if (removed.has(i)) return;
+    newId.set('c' + i, 'c' + cards.length);
+    cards.push(src);
+  });
+  let start = 0;
+  set.prints = setPrints(set).map(print => {
+    let count = 0;
+    for (let i = start; i < start + print.count; i++) if (!removed.has(i)) count++;
+    start += print.count;
+    return { ...print, count };
+  }).filter(print => print.count);
+  for (const tier in set.layout || {}) set.layout[tier] = set.layout[tier].map(id => newId.get(id)).filter(Boolean);
+  const cover = newId.get('c' + (set.coverIndex ?? 0));
+  set.coverIndex = cover ? +cover.slice(1) : 0;
+  set.cards = cards;
+}
+
+// Covers are always upscaled, whatever the set's upscale setting.
+function showCover(img, src) {
+  img.src = src;
+  img.coverSrc = src;
+  enhanceCard(src).then(url => { if (img.coverSrc === src) img.src = url; });
+}
+
+// Upscaled cards are kept in memory only, so sets stay small in storage and the toggle is reversible.
+// ponytail: cache lives for the page session and is never trimmed; add an LRU if memory becomes an issue.
+const enhancedCards = new Map();
+function enhanceCard(src) {
+  if (!enhancedCards.has(src)) enhancedCards.set(src, new Promise(resolve => {
+    const im = new Image();
+    im.onload = () => {
+      // Target 3x the 72x96 export cell, keeping the aspect ratio. Big cards are not resized, only sharpened.
+      const k = Math.max(1, 216 / im.width, 288 / im.height);
+      resolve(upscaleCard(im, Math.round(im.width * k), Math.round(im.height * k)).toDataURL('image/webp', 0.92));
+    };
+    im.onerror = () => resolve(src);
+    im.src = src;
+  }));
+  return enhancedCards.get(src);
+}
+
+// Resize with high-quality smoothing, then sharpen to restore edges.
+function upscaleCard(img, w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+  const src = ctx.getImageData(0, 0, w, h);
+  const out = ctx.createImageData(w, h);
+  sharpen(src, out, 1);
+  ctx.putImageData(out, 0, 0);
+  return cv;
+}
+
+// 3x3 sharpen kernel [0,-a,0; -a,1+4a,-a; 0,-a,0], edges clamped. Alpha is copied.
+function sharpen(src, out, a) {
+  const { width: w, height: h } = src, s = src.data, d = out.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    const up = y > 0 ? i - w * 4 : i, down = y < h - 1 ? i + w * 4 : i;
+    const left = x > 0 ? i - 4 : i, right = x < w - 1 ? i + 4 : i;
+    for (let c = 0; c < 3; c++) {
+      d[i + c] = s[i + c] * (1 + 4 * a) - a * (s[up + c] + s[down + c] + s[left + c] + s[right + c]);
+    }
+    d[i + 3] = s[i + 3];
+  }
 }
 
 function wrapText(ctx, text, cx, cy, maxW, lineH) {
